@@ -2174,7 +2174,7 @@ with gr.Blocks(title="PROJECT OVERLORD // FINANCIAL DEFENSE ENGINE", fill_width=
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
+    port = int(os.environ.get("PORT", os.environ.get("GRADIO_SERVER_PORT", 7860)))
     demo.queue().launch(
         theme=OVERLORD_THEME,
         css=OVERLORD_CSS,
