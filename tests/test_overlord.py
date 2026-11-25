@@ -64,17 +64,32 @@ def test_pdf_extraction_via_pymupdf():
 def test_xai_chatbot_guardrail_and_exact_reply():
     steps = list(app.run_audit(app.DEFAULT_SCENARIO, "3-Way Match"))
     ctx = steps[-1][9]
-    why_hist, _ = app.chat_with_auditor("Why did you flag this?", [], ctx)
-    assert why_hist[-1]["content"] == (
-        "The Purchase Order authorized a flat fee of $500.00. "
-        "The Vendor Invoice billed $600.00, citing an unauthorized 'Setup Fee'. "
-        "Therefore, an overcharge of $100.00 was detected."
+    po_text = app.SCENARIOS[app.DEFAULT_SCENARIO]["po_text"]
+    inv_text = app.SCENARIOS[app.DEFAULT_SCENARIO]["inv_text"]
+
+    about_hist, _ = app.chat_with_auditor("What is the invoice about?", [], ctx, po_text, inv_text)
+    about_reply = about_hist[-1]["content"]
+    assert "600" in about_reply and "can only answer" not in about_reply.lower()
+
+    why_hist, _ = app.chat_with_auditor("Why did you flag this?", [], ctx, po_text, inv_text)
+    assert "100" in why_hist[-1]["content"]
+
+    memo_hist, _ = app.chat_with_auditor(
+        "Draft a 2-sentence internal memo approving the base $500 payment but rejecting the $100 fee.",
+        [], ctx, po_text, inv_text,
     )
-    refusal_hist, _ = app.chat_with_auditor("What is the capital of France?", [], ctx)
-    assert refusal_hist[-1]["content"] == (
-        "I am a specialized Financial Auditor. I can only answer questions "
-        "regarding the current PO, Invoice, and Goods Receipt."
+    assert "500" in memo_hist[-1]["content"] and "100" in memo_hist[-1]["content"]
+
+    hypo_hist, _ = app.chat_with_auditor(
+        "Explain what the system would do if the invoice was $450 instead of $600. Would it pass or fail?",
+        [], ctx, po_text, inv_text,
     )
+    assert "pass" in hypo_hist[-1]["content"].lower()
+
+    refusal_hist, _ = app.chat_with_auditor("What is the capital of France?", [], ctx, po_text, inv_text)
+    refusal = refusal_hist[-1]["content"].lower()
+    assert "paris" not in refusal
+    assert any(w in refusal for w in ("audit", "invoice", "purchase order", "po", "3-way"))
 
 
 def test_chaos_mode_and_certificate_export():
@@ -85,3 +100,33 @@ def test_chaos_mode_and_certificate_export():
     app.gr.Info = lambda *_a, **_kw: None
     cert_path = app.export_audit_certificate(last[9])
     assert cert_path is not None and Path(cert_path).is_file()
+
+
+def test_mega_update_modules():
+    # 1. Supervisor Agent 5th node on Scenario A
+    steps_a = list(app.run_audit(app.DEFAULT_SCENARIO, "3-Way Match"))
+    logs_a = steps_a[-1][3]
+    assert "[SUPERVISOR AGENT] Verifying Auditor's math..." in logs_a
+    assert "[SUPERVISOR AGENT] 600 - 500 = 100. Calculations mathematically verified. Routing to Dispute." in logs_a
+
+    # 2. Vision XAI Bounding Box on Scenario B
+    steps_b = list(app.run_audit("Scenario B: Short-Delivery GPU Fraud ($2,000 Overcharge)", "3-Way Match"))
+    logs_b = steps_b[-1][3]
+    bbox_img_path = steps_b[-1][15]
+    assert "[VISION XAI] Bounding box drawn over missing inventory." in logs_b
+    assert bbox_img_path and Path(bbox_img_path).is_file()
+
+    # 3. UPI QR Checkout & Simulate Payment Success
+    col_upd, qr_upd, _fb, _st = app.open_upi_checkout(steps_a[-1][9])
+    assert col_upd["visible"] is True
+    assert qr_upd["value"] and Path(qr_upd["value"]).is_file()
+    pay_banner, _rows, _kpi = app.simulate_payment_success(steps_a[-1][9])
+    assert "Payment of $500.00 successful. Ledger updated." in pay_banner
+
+    # 4. CFO ROI Calculator & Popup Flex
+    roi_md = app.calculate_cfo_roi(5000, 600, 2.5)
+    assert "Project Overlord will save you **$900,000** annually." in roi_md
+    toasts: list[str] = []
+    app.gr.Info = lambda msg: toasts.append(msg)
+    app.send_dispute_to_vendor(steps_a[-1][5], steps_a[-1][9])
+    assert any("Dispute sent. You just saved $100. At your current scale, this amounts to $120,000 saved this year." in t for t in toasts)

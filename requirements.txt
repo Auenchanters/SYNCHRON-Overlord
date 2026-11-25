@@ -1,6 +1,7 @@
 gradio==6.32.0
 langgraph==1.2.24
-langchain-google-genai==4.5.2
+google-genai>=1.0.0
 python-dotenv>=1.0.0
 pymupdf>=1.24.0
 pillow>=10.0.0
+qrcode>=8.0
