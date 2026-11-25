@@ -183,6 +183,7 @@ def test_mega_update_modules():
     script = app.MOTION_SCRIPT_URL.split("?")[0]
     for url in (script, script.replace("overlord_motion.js", "vendor/three.module.min.js"),
                 script.replace("overlord_motion.js", "vendor/three.core.js"),
-                script.replace("overlord_motion.js", "vendor/anime.esm.min.js")):
+                script.replace("overlord_motion.js", "vendor/gsap/index.js"),
+                script.replace("overlord_motion.js", "vendor/gsap/ScrollTrigger.js")):
         resp = client.get(url)
         assert resp.status_code == 200 and "javascript" in resp.headers["content-type"], url

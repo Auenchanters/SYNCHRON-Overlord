@@ -1,24 +1,30 @@
 // Project Overlord motion layer.
 // - Landing page that dissolves into wind-blown dust (three.js) and doubles as the loading screen.
-// - Dashboard motion on state changes (anime.js), timed with Arc's motion tokens.
-// Both libraries are vendored in ./vendor so the intro works without venue Wi-Fi.
+// - Dashboard motion on state changes (GSAP timelines + ScrollTrigger), timed with Arc's motion tokens.
+// All libraries are vendored in ./vendor so the intro works without venue Wi-Fi.
 import * as THREE from "./vendor/three.module.min.js";
-import { animate, stagger, cubicBezier } from "./vendor/anime.esm.min.js";
+// GSAP's own ES module files (the UMD build cannot run inside a module: it assigns to window).
+import { gsap } from "./vendor/gsap/index.js";
+import { ScrollTrigger } from "./vendor/gsap/ScrollTrigger.js";
 
-// Arc motion tokens (arc-library registry/motion-tokens.ts), in milliseconds.
+gsap.registerPlugin(ScrollTrigger);
+
+// Arc motion tokens (arc-library registry/motion-tokens.ts), in seconds, with GSAP's closest built-in eases:
+// enter cubic-bezier(0.16,1,0.3,1) ~ expo.out, exit (0.7,0,0.84,0) ~ expo.in, standard (0.22,1,0.36,1) ~ power4.out.
 const T = {
-  dur: { instant: 120, fast: 160, exit: 180, standard: 240, considered: 480 },
-  ease: {
-    enter: cubicBezier(0.16, 1, 0.3, 1),
-    exit: cubicBezier(0.7, 0, 0.84, 0),
-    standard: cubicBezier(0.22, 1, 0.36, 1),
-    inOut: cubicBezier(0.65, 0, 0.35, 1),
-  },
-  stagger: { word: 40, line: 80, item: 35 },
-  blur: { subtle: 2, soft: 4, text: 8 },
+  dur: { instant: 0.12, fast: 0.16, exit: 0.18, standard: 0.24, considered: 0.48 },
+  ease: { enter: "expo.out", exit: "expo.in", standard: "power4.out" },
+  stagger: { word: 0.04, line: 0.08, item: 0.035 },
+  blur: { soft: 4, text: 8 },
 };
 const MAX_STAGGER = T.dur.considered; // Arc: total stagger stays under ~0.48s however long the text is.
-const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+gsap.defaults({ duration: T.dur.standard, ease: T.ease.enter });
+// Wall-clock timing: with lag smoothing, throttled frames (a busy projector laptop, a background tab)
+// stretch the dust transition and the landing page can hang. Nothing here needs frame-by-frame physics.
+gsap.ticker.lagSmoothing(0);
+// Read live, so turning reduced motion on in the OS takes effect without a reload.
+const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const reduced = () => reducedQuery.matches;
 
 const THEME_KEY = "ov-theme";
 const isDark = () => document.documentElement.dataset.ovTheme === "dark";
@@ -85,20 +91,17 @@ function buildIntro() {
 
 function revealIntro(intro) {
   const groups = [...intro.querySelectorAll("[data-dust]")].map(splitWords);
-  if (REDUCED) return;
-  let offset = 0;
-  for (const words of groups) {
-    const step = Math.min(T.stagger.word, MAX_STAGGER / Math.max(words.length, 1));
-    animate(words, {
-      opacity: [0, 1],
-      translateY: ["0.3em", "0em"],
-      filter: [`blur(${T.blur.text}px)`, "blur(0px)"],
-      duration: T.dur.considered,
-      delay: stagger(step, { start: offset }),
-      ease: T.ease.enter,
-    });
-    offset += T.stagger.line * 2;
-  }
+  if (reduced()) return null;
+  // One timeline: the headline clears out of a blur, each later line starts as the one above is half in.
+  // Blur is limited to the headline's few words; filters repaint, transforms and opacity do not.
+  const tl = gsap.timeline({ defaults: { duration: T.dur.considered, ease: T.ease.enter } });
+  groups.forEach((words, i) => {
+    const each = Math.min(T.stagger.word, MAX_STAGGER / Math.max(words.length, 1));
+    const from = { autoAlpha: 0, y: "0.3em", ...(i === 0 && { filter: `blur(${T.blur.text}px)` }) };
+    const to = { autoAlpha: 1, y: 0, stagger: each, ...(i === 0 && { filter: "blur(0px)", clearProps: "filter" }) };
+    tl.fromTo(words, from, to, i === 0 ? 0 : `<${T.stagger.line * 2}`);
+  });
+  return tl;
 }
 
 /* The dashboard has to be mounted and styled before the dust can reveal it. */
@@ -224,37 +227,25 @@ function runDust(intro) {
   intro.classList.add("is-dust"); // swap the DOM page for its particle copy on the same frame
 
   const total = 0.9 + 0.12 + 0.35 + 1.85; // max delay + max life
-  const start = performance.now();
-  return new Promise((resolve) => {
-    const frame = (now) => {
-      uniforms.uTime.value = (now - start) / 1000;
-      renderer.render(scene, camera);
-      if (uniforms.uTime.value < total) requestAnimationFrame(frame);
-      else {
-        geo.dispose();
-        mat.dispose();
-        renderer.dispose();
-        resolve();
-      }
-    };
-    requestAnimationFrame(frame);
-  });
+  // The shader owns the easing per mote, so the clock itself runs linear on GSAP's ticker.
+  return gsap
+    .to(uniforms.uTime, { value: total, duration: total, ease: "none", onUpdate: () => renderer.render(scene, camera) })
+    .then(() => {
+      geo.dispose();
+      mat.dispose();
+      renderer.dispose();
+    });
 }
 
 function fadeIntro(intro) {
-  if (REDUCED) return Promise.resolve();
-  return animate(intro, {
-    opacity: [1, 0],
-    filter: ["blur(0px)", `blur(${T.blur.soft}px)`],
-    duration: T.dur.considered,
-    ease: T.ease.exit,
-  }).then(() => {});
+  if (reduced()) return Promise.resolve();
+  return gsap.to(intro, { autoAlpha: 0, filter: `blur(${T.blur.soft}px)`, duration: T.dur.considered, ease: T.ease.exit }).then(() => {});
 }
 
 function startIntro() {
   if (new URLSearchParams(location.search).get("intro") === "0") return;
   const intro = buildIntro();
-  revealIntro(intro);
+  const reveal = revealIntro(intro);
   const ready = dashboardReady();
   let leaving = false;
 
@@ -270,8 +261,10 @@ function startIntro() {
       await ready;
     }
     status.textContent = "";
+    // Words are sampled from their on-screen boxes, so finish the reveal before rasterizing.
+    reveal?.progress(1);
     try {
-      if (REDUCED) throw new Error("reduced motion");
+      if (reduced()) throw new Error("reduced motion");
       await runDust(intro);
     } catch {
       await fadeIntro(intro);
@@ -297,19 +290,88 @@ function startIntro() {
 /* ------------------------------------------------------------------ */
 
 let counting = false;
+let verdictTl = null;
+let verdictTrigger = null;
 const seen = { recovered: 0, verdict: "", flags: "", footing: [], dispatch: "", vision: "" };
 const money = (n) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function rise(targets, extra = {}) {
-  if (REDUCED) return;
-  animate(targets, {
-    opacity: [0, 1],
-    translateY: ["0.3em", "0em"],
-    filter: [`blur(${T.blur.soft}px)`, "blur(0px)"],
-    duration: T.dur.standard,
-    ease: T.ease.enter,
-    ...extra,
-  });
+function rise(targets, vars = {}) {
+  if (reduced() || !targets || targets.length === 0) return null;
+  return gsap.fromTo(
+    targets,
+    { autoAlpha: 0, y: "0.3em" },
+    { autoAlpha: 1, y: 0, overwrite: "auto", clearProps: "opacity,visibility,transform", ...vars },
+  );
+}
+
+/* The one authored moment: the stamp is pressed onto the verdict, the card takes the hit,
+   then the finding rises. It plays when the verdict is on screen, so it is never spent off-screen. */
+function playVerdict(verdict) {
+  verdictTl?.kill();
+  verdictTrigger?.kill();
+  if (reduced()) return;
+  const stamp = verdict.querySelector(".ov-stamp");
+  const lines = verdict.querySelectorAll(".alert-title, .alert-body");
+  verdictTl = gsap
+    .timeline({ paused: true })
+    .fromTo(stamp, { autoAlpha: 0, scale: 1.9, rotation: -9 }, { autoAlpha: 1, scale: 1, rotation: -2, duration: 0.3, ease: "power4.in" })
+    .addLabel("impact")
+    .fromTo(verdict, { y: 0 }, { y: 3, duration: 0.06, ease: "power1.out", yoyo: true, repeat: 1, clearProps: "transform" }, "impact")
+    .fromTo(
+      lines,
+      { autoAlpha: 0, y: "0.3em" },
+      { autoAlpha: 1, y: 0, duration: T.dur.considered, stagger: T.stagger.line, clearProps: "opacity,visibility,transform" },
+      "impact+=0.04",
+    );
+  const r = verdict.getBoundingClientRect();
+  if (r.top < innerHeight * 0.85 && r.bottom > 0) verdictTl.play();
+  else verdictTrigger = ScrollTrigger.create({ trigger: verdict, start: "top 85%", once: true, onEnter: () => verdictTl.play() });
+}
+
+/* Run progress: the summary row fills in agent order (PO, goods receipt, invoice, difference),
+   so the count of filled cells is real progress, shown above the run button. */
+const RUN_STEPS = ["Reading the purchase order", "Checking the goods receipt", "Reading the invoice", "Comparing the totals", "Verifying the math"];
+const run = { active: false, started: 0, clicked: 0, step: -1 };
+let barTo = null;
+
+function runButton() {
+  const el = document.querySelector(".ov-run-hint");
+  return el && (el.matches("button") ? el : el.querySelector("button"));
+}
+
+function trackRun(cells) {
+  const btn = runButton();
+  const help = document.querySelector(".ov-run-help");
+  const track = document.querySelector(".ov-run-progress");
+  const bar = track?.querySelector("i");
+  if (!btn || !help || !bar) return;
+  barTo ??= gsap.quickTo(bar, "scaleX", { duration: 0.4, ease: T.ease.standard });
+  const busy = btn.disabled;
+
+  if (busy && !run.active) {
+    run.active = true;
+    run.started = run.clicked || performance.now(); // time from the click, not from when the button disabled
+    run.step = -1;
+    gsap.killTweensOf(track);
+    gsap.set(track, { autoAlpha: 1 });
+    gsap.set(bar, { scaleX: 0 });
+  }
+  if (busy) {
+    const filled = cells.filter((t) => t.trim() && t.trim() !== "—").length;
+    const step = Math.min(filled, RUN_STEPS.length - 1);
+    if (step > run.step) {
+      run.step = step;
+      help.innerHTML = `Step ${step + 1} of ${RUN_STEPS.length} <span>· ${RUN_STEPS[step]}</span>`;
+      barTo((step + 1) / (RUN_STEPS.length + 1));
+    }
+  } else if (run.active) {
+    run.active = false;
+    run.clicked = 0;
+    const secs = ((performance.now() - run.started) / 1000).toFixed(1);
+    help.innerHTML = `Checked in ${secs} seconds <span>· run again any time</span>`;
+    barTo(1);
+    gsap.to(track, { autoAlpha: 0, duration: T.dur.considered, delay: 0.9 });
+  }
 }
 
 function onDashboardChange() {
@@ -317,15 +379,16 @@ function onDashboardChange() {
   const value = document.querySelector(".ov-impact-value");
   if (value && !counting) {
     const shown = parseFloat(value.textContent.replace(/[^0-9.]/g, "")) || 0;
-    if (shown !== seen.recovered && !REDUCED) {
+    if (shown !== seen.recovered && !reduced()) {
       const write = (n) => document.querySelectorAll(".ov-impact-value").forEach((el) => { el.textContent = money(n); });
       const counter = { v: seen.recovered };
       counting = true;
       write(counter.v);
-      animate(counter, {
+      gsap.to(counter, {
         v: shown,
         duration: T.dur.considered * 1.5,
         ease: T.ease.standard,
+        overwrite: true,
         onUpdate: () => write(counter.v),
         onComplete: () => { write(shown); counting = false; },
       });
@@ -335,47 +398,39 @@ function onDashboardChange() {
 
   const verdict = document.querySelector(".ov-verdict--alert, .ov-verdict--ok");
   const verdictSig = verdict ? verdict.textContent.trim() : "";
-  if (verdict && verdictSig !== seen.verdict && !REDUCED) {
-    // The one authored moment: the stamp lands, then the finding rises out of a soft blur.
-    animate(verdict.querySelector(".ov-stamp"), {
-      scale: [1.9, 1],
-      opacity: [0, 1],
-      rotate: ["-9deg", "-2deg"],
-      duration: T.dur.considered,
-      ease: T.ease.enter,
-    });
-    rise(verdict.querySelectorAll(".alert-title, .alert-body"), { delay: stagger(T.stagger.line, { start: 120 }) });
-  }
+  if (verdict && verdictSig !== seen.verdict) playVerdict(verdict);
   seen.verdict = verdictSig;
 
   const rows = document.querySelectorAll(".ov-line-row--flagged td");
   const flagSig = [...rows].map((td) => td.textContent).join("|");
-  if (rows.length && flagSig !== seen.flags && !REDUCED) {
+  if (rows.length && flagSig !== seen.flags && !reduced()) {
     // Animate to the current theme's tint, then hand the colour back to CSS so a later theme switch applies.
     const tint = getComputedStyle(rows[0]).backgroundColor;
-    animate(rows, {
-      backgroundColor: ["rgba(0,0,0,0)", tint],
+    gsap.fromTo(rows, { backgroundColor: "rgba(0,0,0,0)" }, {
+      backgroundColor: tint,
       duration: T.dur.considered,
-      delay: stagger(T.stagger.item),
+      stagger: T.stagger.item,
       ease: T.ease.standard,
-      onComplete: () => rows.forEach((td) => td.style.removeProperty("background-color")),
+      clearProps: "backgroundColor",
     });
   }
   seen.flags = flagSig;
 
   const cells = [...document.querySelectorAll(".ov-footing tr:nth-child(2) td")];
-  const changed = cells.filter((td, i) => td.textContent !== seen.footing[i]);
-  if (changed.length && seen.footing.length) rise(changed, { delay: stagger(T.stagger.item) });
-  seen.footing = cells.map((td) => td.textContent);
+  const texts = cells.map((td) => td.textContent);
+  const changed = cells.filter((td, i) => texts[i] !== seen.footing[i]);
+  if (changed.length && seen.footing.length) rise(changed, { stagger: T.stagger.item });
+  seen.footing = texts;
+  trackRun(texts);
 
   const dispatch = document.querySelector(".ov-dispatch-success");
   const dispatchSig = dispatch ? dispatch.textContent : "";
-  if (dispatch && dispatchSig !== seen.dispatch) rise(dispatch, { duration: T.dur.considered });
+  if (dispatch && dispatchSig !== seen.dispatch) rise([dispatch], { duration: T.dur.considered });
   seen.dispatch = dispatchSig;
 
   const vision = document.querySelector(".ov-vision-badge");
   const visionSig = vision ? vision.textContent : "";
-  if (vision && visionSig !== seen.vision && seen.vision) rise(vision);
+  if (vision && visionSig !== seen.vision && seen.vision) rise([vision]);
   seen.vision = visionSig;
 }
 
@@ -388,7 +443,7 @@ function watchDashboard() {
       queued = false;
       onDashboardChange();
     });
-  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["disabled"] });
 }
 
 /* ------------------------------------------------------------------ */
@@ -408,14 +463,15 @@ function setTheme(dark, origin) {
     try { localStorage.setItem(THEME_KEY, dark ? "dark" : "light"); } catch {}
     syncThemeToggle();
   };
-  if (REDUCED || !document.startViewTransition) return apply();
+  // GSAP cannot reach the ::view-transition pseudo-elements, so this one wipe stays on the Web Animations API.
+  if (reduced() || !document.startViewTransition) return apply();
   const r = origin.getBoundingClientRect();
   const x = r.left + r.width / 2, y = r.top + r.height / 2;
   const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
   document.startViewTransition(apply).ready.then(() => {
     document.documentElement.animate(
       { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
-      { duration: T.dur.considered * 1.25, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
+      { duration: T.dur.considered * 1250, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
     );
   });
 }
@@ -424,7 +480,10 @@ document.addEventListener("click", (e) => {
   const toggle = e.target.closest?.("#ov-theme-toggle");
   if (toggle) setTheme(!isDark(), toggle);
   // The run button's attention ring has done its job once the user finds it.
-  if (e.target.closest?.(".ov-run-hint")) document.documentElement.classList.add("ov-has-run");
+  if (e.target.closest?.(".ov-run-hint")) {
+    document.documentElement.classList.add("ov-has-run");
+    run.clicked = performance.now();
+  }
 });
 
 startIntro();

@@ -1519,7 +1519,7 @@ OVERLORD_HEAD = """
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 """
 
-# Motion layer: landing page + dust transition (three.js) and dashboard motion (anime.js), both vendored in static/.
+# Motion layer: landing page + dust transition (three.js) and dashboard motion (GSAP), all vendored in static/.
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 mimetypes.add_type("text/javascript", ".js")  # Windows can map .js to text/plain, which browsers refuse for modules
 gr.set_static_paths(paths=[STATIC_DIR])
@@ -1816,6 +1816,9 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 .ov-run-col .ov-exec-btn, .ov-run-col .ov-exec-btn button { min-height: 56px !important; font-size: 17px !important; width: 100%; }
 .ov-run-help { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--pad-ink); }
 .ov-run-help span { font-weight: 400; color: var(--pad-ink-2); }
+/* Progress under the caption while a check runs; space is always reserved so nothing shifts. */
+.ov-run-progress { height: 3px; margin-top: 6px; background: var(--pad-rule); visibility: hidden; }
+.ov-run-progress i { display: block; height: 100%; background: var(--pad-green); transform: scaleX(0); transform-origin: left; will-change: transform; }
 /* Until the first run, a slow ring marks the button as the place to start. */
 @keyframes ov-ring {
     0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pad-green) 45%, transparent); }
@@ -2319,7 +2322,7 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                     scale=2,
                 )
                 with gr.Column(scale=2, min_width=260, elem_classes=["ov-run-col"]):
-                    gr.HTML('<p class="ov-run-help">Run the check <span>· about 2 seconds</span></p>')
+                    gr.HTML('<p class="ov-run-help" aria-live="polite">Run the check <span>· about 2 seconds</span></p><div class="ov-run-progress" aria-hidden="true"><i></i></div>')
                     run_btn = gr.Button("Execute 3-Way Match", variant="primary", size="lg", elem_classes=["ov-exec-btn", "ov-run-hint"])
 
             metrics_bar_html = gr.HTML(value=render_metrics_bar_html())
