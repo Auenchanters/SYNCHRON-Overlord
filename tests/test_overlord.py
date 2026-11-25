@@ -40,29 +40,29 @@ def test_dynamic_edited_invoice_parsing():
     )
     last = steps[-1]
     assert last[0]["interactive"] is True
-    assert "TOTAL RECOVERED: $250.00" in last[1]
-    assert "DISCREPANCY DETECTED: $250.00 OVERCHARGE" in last[4]
+    assert "Total recovered" in last[1] and "$250.00" in last[1]
+    assert "Discrepancy detected: $250.00 overcharge" in last[4]
     assert "INV-7711" in last[5]
     assert "PO #7711" in last[5]
 
     # The Goods Receipt is what separates a 3-Way from a 2-Way match.
     three_way = list(app.run_audit(SCENARIO_B, "3-Way Match"))[-1]
-    assert "DISCREPANCY DETECTED: $2,000.00 OVERCHARGE" in three_way[4]
+    assert "Discrepancy detected: $2,000.00 overcharge" in three_way[4]
     assert "10000 - 8000 = 2000. Calculations mathematically verified." in three_way[3]
     assert three_way[9]["payable"] == 8000.00
     two_way = list(app.run_audit(SCENARIO_B, "2-Way Match"))[-1]
-    assert "CLEARED FOR PAYMENT" in two_way[4]
+    assert "Cleared for payment" in two_way[4]
 
     # Tax is applied to both sides in a 3-Way match, but the 4-Way tax document makes the delivery exempt.
     taxed_three = list(app.run_audit(SCENARIO_C, "3-Way Match", apply_tax=True))[-1]
-    assert "CLEARED FOR PAYMENT" in taxed_three[4]
+    assert "Cleared for payment" in taxed_three[4]
     taxed_four = list(app.run_audit(SCENARIO_C, "4-Way Match (Tax Verification)", apply_tax=True))[-1]
-    assert "DISCREPANCY DETECTED: $120.00 OVERCHARGE" in taxed_four[4]
+    assert "Discrepancy detected: $120.00 overcharge" in taxed_four[4]
 
     # A renamed fee is still caught: anything outside the PO schedule is non-billable.
     renamed = custom_inv.replace("Rush Onboarding Fee", "Onboarding Retainer")
     renamed_last = list(app.run_audit(app.DEFAULT_SCENARIO, "3-Way Match", po_text_input=custom_po, inv_text_input=renamed))[-1]
-    assert "TOTAL RECOVERED: $250.00" in renamed_last[1]
+    assert "Total recovered" in renamed_last[1] and "$250.00" in renamed_last[1]
 
 
 def test_pdf_extraction_via_pymupdf():
@@ -149,7 +149,7 @@ def test_mega_update_modules():
     assert Path(bbox_img_path).name.startswith(app.XAI_IMAGE_PREFIX)
     # Re-running on the annotated image audits the clean scan, not a box drawn on a box.
     rerun = list(app.run_audit(SCENARIO_B, "3-Way Match", gr_image=bbox_img_path))[-1]
-    assert "SHORT 8/10" in rerun[2]
+    assert "8 of 10 units" in rerun[2]
 
     # 3. UPI QR Checkout & Simulate Payment Success
     col_upd, qr_upd, _fb, _st = app.open_upi_checkout(steps_a[-1][9])
@@ -169,7 +169,7 @@ def test_mega_update_modules():
     # 5. Nothing to dispute on a clean match; payment settles the verified payable, not a fixed $500.
     clean = list(app.run_audit(SCENARIO_C, "3-Way Match"))[-1]
     banner, _btn = app.send_dispute_to_vendor(clean[5], clean[9])
-    assert "NO DISPUTE REQUIRED" in banner
+    assert "No dispute needed" in banner
     steps_b_ctx = steps_b[-1][9]
     pay_b, _rows, _kpi = app.simulate_payment_success(steps_b_ctx)
     assert "Payment of $8,000.00 successful." in pay_b

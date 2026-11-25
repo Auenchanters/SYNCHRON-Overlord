@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import io
 import json
 import math
@@ -592,11 +593,11 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
     path = os.path.join(tempfile.gettempdir(), f"overlord_gr_dock_scan_{slug}.png")
     expected, delivered = int(sc["gr_expected_qty"]), int(sc["gr_delivered_qty"])
     empty_box: list[int] | None = None
-    img = Image.new("RGB", (680, 400), (13, 15, 20))
+    img = Image.new("RGB", (680, 400), (251, 252, 248))
     draw = ImageDraw.Draw(img)
-    muted, bright = (156, 163, 175), (243, 244, 246)
-    draw.rectangle([(16, 16), (664, 384)], outline=(42, 45, 55), width=2)
-    draw.rectangle([(16, 16), (664, 62)], fill=(21, 24, 33), outline=(42, 45, 55), width=1)
+    muted, bright = (70, 85, 75), (29, 39, 33)
+    draw.rectangle([(16, 16), (664, 384)], outline=(169, 189, 158), width=2)
+    draw.rectangle([(16, 16), (664, 62)], fill=(233, 239, 226), outline=(169, 189, 158), width=1)
     draw.text((34, 30), f"GOODS RECEIPT // DOCK SCAN #GR-{sc['po_id'].split('#')[-1]}", fill=bright, font=_font(18))
     draw.text((34, 78), f"PO REFERENCE : {sc['po_id']}", fill=muted, font=_font(14))
     draw.text((34, 100), f"VENDOR       : {sc['vendor']}", fill=muted, font=_font(14))
@@ -605,7 +606,7 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
     draw.text(
         (34, 144),
         f"DELIVERED    : {delivered} OF {expected} UNITS SIGNED FOR",
-        fill=(52, 211, 153) if ok else (252, 165, 165),
+        fill=(28, 107, 67) if ok else (176, 39, 31),
         font=_font(14),
     )
     if expected > 1:
@@ -618,11 +619,11 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
             box = [bx, by, bx + bay_w, by + bay_h]
             boxes.append(box)
             if n < delivered:
-                draw.rectangle(box, fill=(30, 58, 50), outline=(16, 185, 129), width=2)
-                draw.text((bx + 14, by + 26), f"GPU #{n + 1:02d}", fill=(167, 243, 208), font=_font(16))
+                draw.rectangle(box, fill=(220, 238, 221), outline=(28, 107, 67), width=2)
+                draw.text((bx + 14, by + 26), f"GPU #{n + 1:02d}", fill=(28, 107, 67), font=_font(16))
             else:
-                draw.rectangle(box, outline=(75, 85, 99), width=1)
-                draw.text((bx + 26, by + 28), "EMPTY", fill=(75, 85, 99), font=_font(14))
+                draw.rectangle(box, outline=(169, 189, 158), width=1)
+                draw.text((bx + 26, by + 28), "EMPTY", fill=(95, 110, 100), font=_font(14))
         missing = boxes[delivered:]
         if missing:
             pad = 6
@@ -634,9 +635,9 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
             ]
     else:
         draw.text((34, 176), "DATE / COND  : 2024-11-24 // EXCELLENT", fill=muted, font=_font(14))
-        draw.text((34, 198), "EXTRAS       : NONE LOGGED ON RECEIVING MANIFEST", fill=(252, 165, 165), font=_font(14))
-        draw.rectangle([(34, 266), (380, 340)], outline=(16, 185, 129), width=2)
-        draw.text((54, 292), f"STAMP: {delivered} ITEM DELIVERED", fill=(16, 185, 129), font=_font(18))
+        draw.text((34, 198), "EXTRAS       : NONE LOGGED ON RECEIVING MANIFEST", fill=(176, 39, 31), font=_font(14))
+        draw.rectangle([(34, 266), (380, 340)], outline=(28, 107, 67), width=2)
+        draw.text((54, 292), f"STAMP: {delivered} ITEM DELIVERED", fill=(28, 107, 67), font=_font(18))
     img.save(path, format="PNG")
     return path, empty_box
 
@@ -680,11 +681,11 @@ def draw_vision_xai_bounding_box(
         w, h = canvas.size
         box = box or _GR_EMPTY_BOXES.get(img_path) or [int(w * 0.54), int(h * 0.52), int(w * 0.94), int(h * 0.90)]
         draw = ImageDraw.Draw(canvas)
-        draw.rectangle(box, outline=(239, 68, 68), width=4)
+        draw.rectangle(box, outline=(176, 39, 31), width=4)
         label_top = box[1] - 26 if box[1] >= 26 else box[3]
         label_w = max(box[2] - box[0], 300)
         label_x = max(min(box[0], w - label_w), 0)
-        draw.rectangle([label_x, label_top, label_x + label_w, label_top + 26], fill=(239, 68, 68))
+        draw.rectangle([label_x, label_top, label_x + label_w, label_top + 26], fill=(176, 39, 31))
         draw.text((label_x + 8, label_top + 5), missing_label, fill=(255, 255, 255), font=_font(14))
         canvas.save(out_path, format="PNG")
         return out_path
@@ -1392,12 +1393,12 @@ def open_upi_checkout(audit_ctx: Any) -> tuple[Any, Any, Any, Any]:
     amt = _settlement_amount(ctx)
     qr_path, failed = generate_upi_qr_image(amt)
     withheld = float(ctx.get("variance", 0.0))
-    note = f" // ${withheld:,.2f} WITHHELD UNDER DISPUTE" if withheld > 0 else ""
+    note = f", ${withheld:,.2f} withheld under dispute" if withheld > 0 else ""
     return (
         gr.update(visible=True),
         gr.update(value=qr_path, visible=not failed),
         gr.update(value=build_upi_uri(amt), visible=failed),
-        f'<div class="ov-dispatch-idle">APPROVED SETTLEMENT: ${amt:,.2f}{note} // Placeholder Donation Mode Active</div>',
+        f'<div class="ov-dispatch-idle">Approved to pay: ${amt:,.2f}{note}. Demo UPI request.</div>',
     )
 
 
@@ -1430,7 +1431,7 @@ def simulate_payment_success(audit_ctx: Any) -> tuple[str, list[list[Any]], str]
     banner = (
         '<div class="ov-dispatch-success">'
         f'<div class="ov-dispatch-title">Payment of ${amt:,.2f} successful. Ledger updated.</div>'
-        f'<div class="ov-dispatch-sub">UPI SETTLEMENT LOGGED // {UPI_VPA}</div>'
+        f'<div class="ov-dispatch-sub">Recorded in the compliance ledger. UPI ID {UPI_VPA}.</div>'
         "</div>"
     )
     return banner, rows, render_ledger_kpi_html()
@@ -1461,13 +1462,13 @@ def send_dispute_to_vendor(
             gr.Warning("Run the 3-Way Match first to generate a dispute email.")
         except Exception:
             pass
-        return '<div class="ov-dispatch-idle">API DISPATCH STANDBY // Awaiting drafted dispute</div>', gr.update()
+        return '<div class="ov-dispatch-idle">Run the check first. There is no dispute to send yet.</div>', gr.update()
     if not ctx.get("detected"):
         try:
             gr.Warning("Nothing to dispute: the 3-Way Match cleared. Use Proceed to Payment.")
         except Exception:
             pass
-        return '<div class="ov-dispatch-idle">NO DISPUTE REQUIRED // 3-Way Match cleared</div>', gr.update()
+        return '<div class="ov-dispatch-idle">No dispute needed: the 3-way match cleared.</div>', gr.update()
 
     saved = round(float(ctx.get("recovered", 0.0) or 0.0), 2)
     saved_disp = f"${int(saved):,}" if saved.is_integer() else f"${saved:,.2f}"
@@ -1495,8 +1496,8 @@ def send_dispute_to_vendor(
         pass
     banner_html = (
         '<div class="ov-dispatch-success">'
-        '<div class="ov-dispatch-title">[SUCCESS] Dispute dispatched to vendor via API. Funds secured.</div>'
-        f'<div class="ov-dispatch-sub">IMMUTABLE LEDGER SEALED // {ts} // ANNUALIZED SCALE IMPACT: ${annual_scale:,}/YR</div>'
+        '<div class="ov-dispatch-title">[SUCCESS] Dispute sent to the vendor. Payment of the disputed amount is on hold.</div>'
+        f'<div class="ov-dispatch-sub">Logged to the audit ledger at {ts}. At 5,000 invoices a month this is about ${annual_scale:,} a year.</div>'
         "</div>"
     )
     return banner_html, gr.update(value="Dispute Dispatched ✓", interactive=False)
@@ -1509,329 +1510,272 @@ def send_dispute_to_vendor(
 OVERLORD_HEAD = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 """
 
+# Visual world: an accountant's columnar analysis pad. Pale ruled paper, graphite ink,
+# red ink only for exceptions, green ink only for verified figures. Light on purpose:
+# it is read at a desk and on a projector, where dark UIs wash out.
+_PAD = {
+    "paper": "#F4F7EF",
+    "paper_2": "#E9EFE2",
+    "sheet": "#FBFCF8",
+    "rule": "#CFDBC6",
+    "rule_strong": "#A9BD9E",
+    "ink": "#1D2721",
+    "ink_2": "#46554B",
+    "ink_3": "#5F6E64",
+    "green": "#1C6B43",
+    "green_tint": "#DCEEDD",
+    "red": "#B0271F",
+    "red_tint": "#F8E2DE",
+}
+
+_THEME_VALUES = dict(
+    body_background_fill=_PAD["paper"],
+    body_text_color=_PAD["ink"],
+    body_text_color_subdued=_PAD["ink_2"],
+    background_fill_primary=_PAD["sheet"],
+    background_fill_secondary=_PAD["paper_2"],
+    block_background_fill=_PAD["sheet"],
+    block_border_color=_PAD["rule"],
+    block_border_width="1px",
+    block_label_background_fill=_PAD["sheet"],
+    block_label_text_color=_PAD["ink_2"],
+    block_title_text_color=_PAD["ink"],
+    block_radius="4px",
+    block_shadow="none",
+    border_color_primary=_PAD["rule"],
+    border_color_accent=_PAD["green"],
+    color_accent=_PAD["green"],
+    color_accent_soft=_PAD["green_tint"],
+    input_background_fill=_PAD["sheet"],
+    input_border_color=_PAD["rule_strong"],
+    input_border_color_focus=_PAD["green"],
+    input_radius="4px",
+    input_shadow="none",
+    input_shadow_focus=f"0 0 0 3px {_PAD['green_tint']}",
+    button_primary_background_fill=_PAD["green"],
+    button_primary_background_fill_hover="#155535",
+    button_primary_text_color="#FFFFFF",
+    button_primary_border_color=_PAD["green"],
+    button_secondary_background_fill=_PAD["sheet"],
+    button_secondary_background_fill_hover=_PAD["paper_2"],
+    button_secondary_text_color=_PAD["ink"],
+    button_secondary_border_color=_PAD["rule_strong"],
+    checkbox_background_color=_PAD["sheet"],
+    checkbox_border_color=_PAD["rule_strong"],
+    checkbox_background_color_selected=_PAD["green"],
+    checkbox_border_color_selected=_PAD["green"],
+    checkbox_label_background_fill=_PAD["sheet"],
+    checkbox_label_background_fill_selected=_PAD["green_tint"],
+    checkbox_label_text_color=_PAD["ink"],
+    slider_color=_PAD["green"],
+    table_border_color=_PAD["rule"],
+    table_even_background_fill=_PAD["sheet"],
+    table_odd_background_fill=_PAD["paper"],
+    table_row_focus=_PAD["green_tint"],
+    panel_background_fill=_PAD["paper_2"],
+    panel_border_color=_PAD["rule"],
+    shadow_drop="none",
+    shadow_drop_lg="0 6px 20px rgba(29, 39, 33, 0.12)",
+)
+
 OVERLORD_THEME = gr.themes.Base(
-    primary_hue="emerald",
-    neutral_hue="slate",
-    font=[gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
-    font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "ui-monospace", "monospace"],
+    primary_hue="green",
+    neutral_hue="stone",
+    radius_size="sm",
+    font=[gr.themes.GoogleFont("IBM Plex Sans"), "system-ui", "sans-serif"],
+    font_mono=[gr.themes.GoogleFont("IBM Plex Mono"), "ui-monospace", "monospace"],
 ).set(
-    body_background_fill="#0A0B0E",
-    body_background_fill_dark="#0A0B0E",
-    body_text_color="#F3F4F6",
-    body_text_color_dark="#F3F4F6",
-    background_fill_primary="#12141A",
-    background_fill_primary_dark="#12141A",
-    background_fill_secondary="#0D0F14",
-    background_fill_secondary_dark="#0D0F14",
-    block_background_fill="#12141A",
-    block_background_fill_dark="#12141A",
-    block_border_color="#2A2D37",
-    block_border_color_dark="#2A2D37",
-    input_background_fill="#0D0F14",
-    input_background_fill_dark="#0D0F14",
-    input_border_color="#2A2D37",
-    input_border_color_dark="#2A2D37",
+    # Same values in both schemes: the pad is a light world even when the OS is in dark mode.
+    **_THEME_VALUES,
+    **{f"{k}_dark": v for k, v in _THEME_VALUES.items() if f"{k}_dark" in inspect.signature(gr.themes.Base.set).parameters},
 )
 
 OVERLORD_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
-:root, :root.dark, :root .dark, .gradio-container {
-    --ov-bg: #0A0B0E;
-    --ov-panel: #12141A;
-    --ov-panel-deep: #0D0F14;
-    --ov-panel-elevated: #151822;
-    --ov-border: #2A2D37;
-    --ov-text: #E7E9EE;
-    --ov-text-bright: #F3F4F6;
-    --ov-text-muted: #9CA3AF;
-    --ov-text-dim: #6B7280;
-    --ov-green: #10B981;
-    --ov-green-bright: #34D399;
-    --ov-red: #EF4444;
-    --ov-red-bright: #FCA5A5;
-    --ov-amber: #F59E0B;
-    --ov-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    --ov-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-
-    /* Force-override ALL Gradio 6.32.0 light-mode CSS theme tokens */
-    --body-background-fill: #0A0B0E !important;
-    --body-text-color: #E7E9EE !important;
-    --body-text-color-subdued: #9CA3AF !important;
-    --background-fill-primary: #12141A !important;
-    --background-fill-secondary: #0D0F14 !important;
-    --bg-color: #12141A !important;
-    --border-color-primary: #2A2D37 !important;
-    --border-color-accent: #10B981 !important;
-    --border-color-accent-subdued: rgba(16, 185, 129, 0.45) !important;
-    --color-accent: #10B981 !important;
-    --color-accent-soft: rgba(16, 185, 129, 0.14) !important;
-    --link-text-color: #34D399 !important;
-    --link-text-color-hover: #6EE7B7 !important;
-
-    --block-background-fill: #12141A !important;
-    --block-border-color: #2A2D37 !important;
-    --block-label-background-fill: #151822 !important;
-    --block-label-border-color: #2A2D37 !important;
-    --block-label-text-color: #9CA3AF !important;
-    --block-title-background-fill: transparent !important;
-    --block-title-text-color: #E7E9EE !important;
-    --block-info-text-color: #9CA3AF !important;
-    --panel-background-fill: #0D0F14 !important;
-    --panel-border-color: #2A2D37 !important;
-
-    --input-background-fill: #0D0F14 !important;
-    --input-background-fill-focus: #0D0F14 !important;
-    --input-background-fill-hover: #12141A !important;
-    --input-border-color: #2A2D37 !important;
-    --input-border-color-focus: #10B981 !important;
-    --input-border-color-hover: #3B4050 !important;
-    --input-placeholder-color: #6B7280 !important;
-
-    --table-even-background-fill: #0D0F14 !important;
-    --table-odd-background-fill: #12141A !important;
-    --table-border-color: #2A2D37 !important;
-    --table-row-focus: rgba(16, 185, 129, 0.12) !important;
-    --table-text-color: #E7E9EE !important;
-
-    --button-secondary-background-fill: #151822 !important;
-    --button-secondary-background-fill-hover: #1D2130 !important;
-    --button-secondary-border-color: #2A2D37 !important;
-    --button-secondary-border-color-hover: #10B981 !important;
-    --button-secondary-text-color: #E7E9EE !important;
-
-    --checkbox-background-color: #0D0F14 !important;
-    --checkbox-background-color-selected: #10B981 !important;
-    --checkbox-border-color: #2A2D37 !important;
-    --checkbox-border-color-selected: #10B981 !important;
-    --checkbox-label-background-fill: #12141A !important;
-    --checkbox-label-border-color: #2A2D37 !important;
-    --checkbox-label-text-color: #E7E9EE !important;
-
-    --code-background-fill: #0A0B0E !important;
-    --slider-color: #10B981 !important;
-    --loader-color: #10B981 !important;
+:root, .dark, .gradio-container {
+    --pad-paper: #F4F7EF;
+    --pad-paper-2: #E9EFE2;
+    --pad-sheet: #FBFCF8;
+    --pad-rule: #CFDBC6;
+    --pad-rule-strong: #A9BD9E;
+    --pad-ink: #1D2721;
+    --pad-ink-2: #46554B;
+    --pad-ink-3: #5F6E64;
+    --pad-green: #1C6B43;
+    --pad-green-tint: #DCEEDD;
+    --pad-red: #B0271F;
+    --pad-red-tint: #F8E2DE;
+    --pad-sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --pad-mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
-html, body, .gradio-container {
-    background-color: var(--ov-bg) !important;
-    color: var(--ov-text) !important;
-    font-family: var(--ov-font-sans) !important;
-    color-scheme: dark !important;
-}
-footer { display: none !important; visibility: hidden !important; }
-.gradio-container { max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+/* Base */
+body, .gradio-container { background: var(--pad-paper) !important; color: var(--pad-ink) !important; font-family: var(--pad-sans) !important; }
+.gradio-container { max-width: 1680px !important; margin: 0 auto !important; padding: 0 !important; overflow: visible !important; font-size: 15px; line-height: 1.5; }
+footer { display: none !important; }
+::selection { background: var(--pad-green-tint); color: var(--pad-ink); }
+* { scrollbar-color: var(--pad-rule-strong) transparent; scrollbar-width: thin; }
+:focus-visible { outline: 2px solid var(--pad-green) !important; outline-offset: 2px; }
+.num, .ov-figure { font-variant-numeric: tabular-nums lining-nums; }
 
-/* Global Blocks, Forms, Labels & Checkboxes */
-.gradio-container .block, .gradio-container .panel { background-color: var(--ov-panel) !important; border-color: var(--ov-border) !important; color: var(--ov-text) !important; }
-.gradio-container .form { background: transparent !important; border: none !important; gap: 8px !important; }
-.gradio-container label, .gradio-container label > span, .gradio-container .label-wrap, .gradio-container .label-text {
-    color: var(--ov-text-muted) !important; background-color: transparent !important; border-color: var(--ov-border) !important;
-}
-.gradio-container [data-testid="block-label"] { background-color: var(--ov-panel-elevated) !important; border: 1px solid var(--ov-border) !important; color: var(--ov-text) !important; }
-.gradio-container [data-testid="block-info"], .gradio-container .info-text { color: var(--ov-text-dim) !important; background: transparent !important; }
-.gradio-container input[type="checkbox"] { background-color: var(--ov-panel-deep) !important; border: 1px solid var(--ov-border) !important; }
-.gradio-container input[type="checkbox"]:checked { background-color: var(--ov-green) !important; border-color: var(--ov-green) !important; }
-
-/* Global Dark Input, Textbox, gr.Number & Slider Number Boxes */
-.gradio-container input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]),
-.gradio-container textarea,
-.gradio-container select,
-.gradio-container input[type="number"],
-.gradio-container [data-testid="textbox"] textarea,
-.gradio-container [data-testid="textbox"] input,
-.gradio-container [data-testid="number"] input,
-.gradio-container input:disabled,
-.gradio-container textarea:disabled,
-.gradio-container input[readonly],
-.gradio-container textarea[readonly] {
-    background-color: #0D0F14 !important;
-    color: #E7E9EE !important;
-    -webkit-text-fill-color: #E7E9EE !important;
-    border: 1px solid #2A2D37 !important;
-    border-radius: 6px !important;
-    box-shadow: none !important;
-    opacity: 1 !important;
-    color-scheme: dark !important;
-}
-.gradio-container input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
-.gradio-container textarea:focus,
-.gradio-container input[type="number"]:focus {
-    border-color: #10B981 !important;
-    outline: none !important;
-    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.35) !important;
-}
-.gradio-container input::placeholder, .gradio-container textarea::placeholder {
-    color: var(--ov-text-dim) !important; -webkit-text-fill-color: var(--ov-text-dim) !important;
-}
-
-/* Shell & Sidebar */
-.ov-shell { gap: 0 !important; flex-wrap: nowrap !important; align-items: stretch !important; min-height: 100vh; }
+/* Shell: a quieter sidebar layer next to the working sheet */
+.ov-shell { gap: 0 !important; align-items: stretch !important; min-height: 100vh; }
 .ov-sidebar {
-    background: var(--ov-panel) !important; border-right: 1px solid var(--ov-border) !important;
-    min-width: 280px !important; max-width: 280px !important;
-    padding: 20px 18px !important; gap: 11px !important;
-    position: sticky; top: 0; align-self: flex-start; min-height: 100vh;
+    background: var(--pad-paper-2) !important; border-right: 1px solid var(--pad-rule) !important;
+    padding: 24px 20px !important; gap: 14px !important;
+    position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto;
 }
-.ov-main { padding: 16px 20px 26px 20px !important; gap: 12px !important; background: var(--ov-bg) !important; }
-.overlord-row { gap: 12px !important; align-items: stretch !important; }
-.overlord-panel-col { background: var(--ov-panel) !important; border: 1px solid var(--ov-border) !important; border-radius: 6px !important; padding: 12px !important; gap: 10px !important; }
+.ov-main { padding: 24px 28px 40px !important; gap: 20px !important; min-width: 0; }
 
-.ov-sidebar-brand { border-bottom: 1px solid var(--ov-border); padding-bottom: 12px; }
-.ov-sidebar-brand .title { font-family: var(--ov-font-mono); font-size: 13.5px; font-weight: 700; letter-spacing: 0.16em; color: var(--ov-text-bright); }
-.ov-sidebar-brand .sub { font-family: var(--ov-font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--ov-green-bright); margin-top: 4px; }
-.ov-status-stack { display: flex; flex-direction: column; gap: 5px; padding: 4px 0 6px 0; }
-.ov-status-line { display: flex; align-items: center; gap: 8px; font-family: var(--ov-font-mono); font-size: 10.5px; color: var(--ov-text-muted); }
-.ov-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ov-green); box-shadow: 0 0 8px var(--ov-green); flex-shrink: 0; }
-.ov-dot--amber { background: var(--ov-amber); box-shadow: 0 0 8px var(--ov-amber); }
+.ov-sidebar-brand .title { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; color: var(--pad-ink); }
+.ov-sidebar-brand .sub { font-size: 13.5px; color: var(--pad-ink-2); margin-top: 2px; }
+.ov-sidebar-steps { margin: 4px 0 0; padding: 0 0 0 18px; color: var(--pad-ink-2); font-size: 13.5px; line-height: 1.55; }
+.ov-sidebar-steps li { margin: 2px 0; }
+.ov-sidebar-steps strong { color: var(--pad-ink); font-weight: 600; }
 
-.ov-chaos-wrap { background: rgba(245, 158, 11, 0.06) !important; border: 1px solid rgba(245, 158, 11, 0.35) !important; border-radius: 6px !important; padding: 8px 10px !important; }
-.ov-chaos-wrap label span { font-family: var(--ov-font-mono) !important; font-size: 11px !important; font-weight: 700 !important; color: #FCD34D !important; }
+.ov-status-stack { display: grid; gap: 4px; font-size: 13px; color: var(--pad-ink-2); }
+.ov-status-line { display: flex; align-items: center; gap: 8px; }
+.ov-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pad-green); flex: none; }
+.ov-dot--amber { background: #B7791F; }
 
-/* Dropdowns & Fixed Popup Option Lists */
-.gradio-container .wrap, .gradio-container .wrap-inner, .gradio-container .secondary-wrap { background-color: var(--ov-panel-deep) !important; color: var(--ov-text) !important; }
-.gradio-container .wrap { border: 1px solid var(--ov-border) !important; border-radius: 6px !important; box-shadow: none !important; }
-.gradio-container .wrap:focus-within { border-color: var(--ov-green) !important; }
-.gradio-container .wrap-inner input, .gradio-container .secondary-wrap input, .gradio-container .wrap input[readonly] {
-    background: transparent !important; border: none !important; color: var(--ov-text) !important; -webkit-text-fill-color: var(--ov-text) !important; font-size: 12.5px !important;
+.ov-sidebar-footer { font-size: 12.5px; color: var(--pad-ink-3); line-height: 1.6; border-top: 1px solid var(--pad-rule); padding-top: 12px; }
+.ov-chaos-wrap { background: transparent !important; border: none !important; padding: 0 !important; flex: none !important; }
+.ov-sidebar > * { flex: none !important; }
+
+/* Labels on Gradio controls: sentence case, readable */
+.gradio-container label span, .gradio-container .block-label, .gradio-container [data-testid="block-label"] {
+    font-family: var(--pad-sans) !important; font-size: 13.5px !important; font-weight: 600 !important;
+    color: var(--pad-ink) !important; text-transform: none !important; letter-spacing: 0 !important;
 }
-.gradio-container .wrap .icon-wrap, .gradio-container .wrap .icon-wrap svg { color: var(--ov-text-muted) !important; fill: var(--ov-text-muted) !important; }
-ul.options, .options, ul.option-list, .option-list, .gradio-container ul.options, .gradio-container .options {
-    background-color: var(--ov-panel) !important; border: 1px solid var(--ov-border) !important;
-    border-radius: 6px !important; color: var(--ov-text) !important; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65) !important;
-    z-index: 1000 !important; opacity: 1 !important;
+.gradio-container .info, .gradio-container span[data-testid="block-info"] { color: var(--pad-ink-2) !important; font-size: 12.5px !important; }
+.gradio-container textarea, .gradio-container input { color: var(--pad-ink) !important; font-family: var(--pad-sans) !important; }
+
+/* Dropdown list: opaque, above the controls under it */
+.gradio-container .options, .gradio-container ul.options {
+    background: var(--pad-sheet) !important; border: 1px solid var(--pad-rule-strong) !important;
+    box-shadow: 0 8px 24px rgba(29, 39, 33, 0.16) !important; z-index: 1000 !important; opacity: 1 !important;
 }
-ul.options li.item, ul.options .item, .options li.item, .options .item, .option-list .item {
-    background-color: var(--ov-panel) !important; color: var(--ov-text) !important; font-size: 12.5px !important; border-bottom: 1px solid rgba(42, 45, 55, 0.45) !important;
+.gradio-container .options .item { color: var(--pad-ink) !important; font-size: 14px !important; }
+.gradio-container .options .item:hover, .gradio-container .options .item.active { background: var(--pad-green-tint) !important; }
+
+/* Buttons: one primary action per area, same shape everywhere */
+.gradio-container button { font-family: var(--pad-sans) !important; font-weight: 600 !important; border-radius: 4px !important; transition: background-color 160ms ease-out, border-color 160ms ease-out; }
+.ov-exec-btn, .ov-exec-btn button { min-height: 46px !important; font-size: 15px !important; }
+.ov-quick-btn, .ov-quick-btn button { font-size: 13.5px !important; font-weight: 500 !important; }
+.ov-send-btn, .ov-send-btn button { background: var(--pad-red) !important; border-color: var(--pad-red) !important; color: #FFFFFF !important; }
+.ov-send-btn:hover, .ov-send-btn button:hover { background: #8E1F18 !important; }
+.gradio-container button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Tabs */
+.gradio-container button[role="tab"] { font-size: 14px !important; font-weight: 500 !important; color: var(--pad-ink-2) !important; }
+.gradio-container button[role="tab"][aria-selected="true"] { color: var(--pad-ink) !important; font-weight: 600 !important; border-color: var(--pad-green) !important; }
+
+/* Header: title on the left, the money figure on the right */
+.ov-topbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 16px; border-bottom: 2px solid var(--pad-ink); }
+.ov-brand-title { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--pad-ink); }
+.ov-brand-sub { margin: 4px 0 0; font-size: 15px; color: var(--pad-ink-2); max-width: 70ch; }
+.ov-impact-box { text-align: right; }
+.ov-impact-label { font-size: 13px; color: var(--pad-ink-2); }
+.ov-impact-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--pad-ink); }
+.ov-impact-box--flash .ov-impact-value { color: var(--pad-red); animation: ov-ink 600ms cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes ov-ink { from { opacity: 0.2; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Reconciliation footing: one ruled ledger row, the way the pad totals a column */
+.ov-footing { width: 100%; border-collapse: collapse; background: var(--pad-sheet); border: 1px solid var(--pad-rule-strong); font-variant-numeric: tabular-nums; }
+.ov-footing th { text-align: left; font-size: 13px; font-weight: 600; color: var(--pad-ink-2); padding: 10px 16px 2px; border-right: 1px solid var(--pad-rule); }
+.ov-footing td { font-size: 22px; font-weight: 600; padding: 0 16px 4px; border-right: 1px solid var(--pad-rule); color: var(--pad-ink); }
+.ov-footing td.sub { font-size: 12.5px; font-weight: 400; color: var(--pad-ink-3); padding-bottom: 10px; }
+.ov-footing th:last-child, .ov-footing td:last-child { border-right: none; border-left: 2px solid var(--pad-ink); }
+.ov-footing .is-ok { color: var(--pad-green); }
+.ov-footing .is-alert { color: var(--pad-red); }
+
+/* Document sheets */
+.overlord-row { gap: 16px !important; align-items: stretch !important; }
+.overlord-panel-col { gap: 10px !important; min-width: 0 !important; }
+.ov-doc-shell { background: var(--pad-sheet); border: 1px solid var(--pad-rule-strong); border-radius: 4px; }
+.ov-doc-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 16px 10px; border-bottom: 1px solid var(--pad-rule); }
+.ov-doc-title { font-size: 17px; font-weight: 700; color: var(--pad-ink); }
+.ov-doc-purpose { display: block; font-size: 13px; font-weight: 400; color: var(--pad-ink-2); margin-top: 1px; }
+.ov-doc-body { padding: 0 0 12px; }
+.ov-pill { font-size: 12.5px; font-weight: 600; color: var(--pad-ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ov-pill--ok { color: var(--pad-green); }
+.ov-pill--alert { color: var(--pad-red); }
+
+.ov-line-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ov-line-table th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--pad-ink-2); padding: 8px 16px; border-bottom: 1px solid var(--pad-rule-strong); }
+.ov-line-table td { padding: 9px 16px; border-bottom: 1px solid var(--pad-rule); color: var(--pad-ink); vertical-align: top; }
+.ov-line-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; border-left: 1px solid var(--pad-rule); }
+.ov-line-row--flagged td { background: var(--pad-red-tint); color: var(--pad-red); }
+.ov-doc-total { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 16px; border-bottom: 3px double var(--pad-ink); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.hl-ok { color: var(--pad-green); }
+.hl-ok::after { content: " \\2713"; }
+.hl-flag-pulse { color: var(--pad-red); font-weight: 700; }
+.ov-legal-extract {
+    margin: 12px 16px 0; padding: 10px 12px; max-height: 180px; overflow: auto; white-space: pre-wrap;
+    font-family: var(--pad-mono); font-size: 12px; line-height: 1.6; color: var(--pad-ink-2);
+    background: repeating-linear-gradient(to bottom, var(--pad-paper) 0 18.2px, var(--pad-rule) 18.2px 19.2px);
+    border: 1px solid var(--pad-rule);
 }
-ul.options li.item:hover, ul.options .item:hover, ul.options li.item.active, .options li.item:hover, .options .item.active {
-    background-color: var(--ov-panel-elevated) !important; color: var(--ov-green-bright) !important;
+.ov-source { margin: 10px 16px 0; font-size: 13px; color: var(--pad-ink-2); }
+.ov-source summary { cursor: pointer; font-weight: 600; }
+.ov-source .ov-legal-extract { margin: 8px 0 0; }
+.ov-doc-editor textarea { font-family: var(--pad-mono) !important; font-size: 12.5px !important; line-height: 1.6 !important; }
+.ov-gr-image { border: 1px solid var(--pad-rule-strong) !important; background: var(--pad-sheet) !important; }
+
+.ov-vision-badge { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border: 1px solid var(--pad-rule-strong); background: var(--pad-sheet); font-size: 14px; font-weight: 600; color: var(--pad-green); }
+.ov-vision-badge .sub { font-weight: 400; color: var(--pad-ink-2); font-size: 13.5px; }
+.ov-vision-badge--alert { border-color: var(--pad-red); background: var(--pad-red-tint); color: var(--pad-red); }
+
+/* Verdict: the stamp is the state */
+.ov-verdict { border: 1px solid var(--pad-rule-strong); background: var(--pad-sheet); padding: 16px 18px; }
+.ov-verdict--alert { border: 2px solid var(--pad-red); background: var(--pad-red-tint); }
+.ov-verdict--ok { border: 2px solid var(--pad-green); background: var(--pad-green-tint); }
+.ov-stamp { display: inline-block; border: 2px solid currentColor; padding: 2px 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.ov-verdict--alert .ov-stamp, .ov-verdict--alert .alert-title { color: var(--pad-red); }
+.ov-verdict--ok .ov-stamp, .ov-verdict--ok .alert-title { color: var(--pad-green); }
+.alert-title { margin-top: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--pad-ink); font-variant-numeric: tabular-nums; }
+.alert-body { margin-top: 4px; font-size: 15px; color: var(--pad-ink); max-width: 70ch; }
+.findings-idle { color: var(--pad-ink-2); font-size: 15px; }
+
+.ov-section-label { font-size: 15px; font-weight: 700; color: var(--pad-ink); margin: 6px 0 2px; }
+.ov-section-hint { font-size: 13px; font-weight: 400; color: var(--pad-ink-2); }
+
+.ov-telemetry-box textarea { font-family: var(--pad-mono) !important; font-size: 12.5px !important; line-height: 1.6 !important; color: var(--pad-ink-2) !important; background: var(--pad-paper) !important; }
+.ov-dispute-box textarea { font-family: var(--pad-sans) !important; font-size: 14px !important; line-height: 1.6 !important; }
+.ov-chatbot { border: 1px solid var(--pad-rule-strong) !important; background: var(--pad-sheet) !important; }
+.ov-chatbot .message, .ov-chatbot [data-testid="bot"], .ov-chatbot [data-testid="user"] { font-size: 14px !important; line-height: 1.55 !important; }
+.ov-chatbot [data-testid="user"] { background: var(--pad-green-tint) !important; border-color: var(--pad-rule) !important; }
+.ov-chatbot [data-testid="bot"] { background: var(--pad-paper) !important; border-color: var(--pad-rule) !important; color: var(--pad-ink) !important; }
+
+.ov-dispatch-idle { font-size: 13.5px; color: var(--pad-ink-2); padding: 8px 0; }
+.ov-dispatch-success { border: 2px solid var(--pad-green); background: var(--pad-green-tint); padding: 12px 14px; }
+.ov-dispatch-title { font-size: 15px; font-weight: 700; color: var(--pad-green); }
+.ov-dispatch-sub { font-size: 13px; color: var(--pad-ink-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ov-ledger-kpi { display: flex; gap: 32px; padding: 12px 0; font-size: 15px; color: var(--pad-ink-2); }
+.ov-ledger-kpi strong { color: var(--pad-ink); font-size: 20px; font-variant-numeric: tabular-nums; display: block; }
+
+.ov-cfo-roi-card { border: 1px solid var(--pad-rule-strong); background: var(--pad-sheet); padding: 18px 20px !important; }
+.ov-cfo-roi-card h2 { font-size: 24px !important; letter-spacing: -0.01em; }
+.ov-cfo-roi-card code { font-family: var(--pad-sans) !important; background: transparent !important; color: var(--pad-ink) !important; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Narrow screens: the sidebar becomes a top section, documents stack */
+@media (max-width: 1100px) {
+    .ov-shell { flex-direction: column !important; }
+    .ov-sidebar { position: static; height: auto; border-right: none !important; border-bottom: 1px solid var(--pad-rule) !important; }
+    .ov-main { padding: 18px 16px 32px !important; }
+    .overlord-row { flex-direction: column !important; }
+    .ov-topbar { flex-direction: column; align-items: flex-start; }
+    .ov-impact-box { text-align: left; }
+    .ov-footing td { font-size: 18px; }
 }
-
-.ov-exec-btn button {
-    background: var(--ov-green) !important; color: #041F17 !important; font-family: var(--ov-font-mono) !important; font-weight: 700 !important;
-    letter-spacing: 0.1em !important; text-transform: uppercase !important; border: none !important; min-height: 46px !important;
-    box-shadow: 0 0 18px rgba(16, 185, 129, 0.28) !important;
+@media (max-width: 700px) {
+    .ov-footing td.sub { display: none; }
+    .ov-footing th { padding: 8px 8px 2px; }
+    .ov-footing td { font-size: 16px; padding: 0 8px 10px; }
 }
-.ov-exec-btn button:hover { background: #0EA572 !important; }
-.ov-exec-btn button:disabled { opacity: 0.5 !important; cursor: wait !important; }
-.ov-sidebar-footer { margin-top: auto; border-top: 1px solid var(--ov-border); padding-top: 12px; font-family: var(--ov-font-mono); font-size: 10px; line-height: 1.75; color: var(--ov-text-dim); }
-
-/* Topbar & Metrics */
-.ov-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: linear-gradient(180deg, #141720 0%, #101218 100%); border: 1px solid var(--ov-border); border-radius: 6px; padding: 12px 16px; }
-.ov-brand-eyebrow { display: flex; align-items: center; gap: 8px; font-family: var(--ov-font-mono); font-size: 10.5px; letter-spacing: 0.12em; color: var(--ov-text-muted); text-transform: uppercase; }
-.ov-brand-title { margin: 3px 0 0 0; font-family: var(--ov-font-mono); font-size: 17px; font-weight: 700; letter-spacing: 0.05em; color: var(--ov-text-bright); }
-.ov-impact-box { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; background: var(--ov-panel-deep); border: 1px solid var(--ov-border); border-radius: 6px; padding: 8px 16px; min-width: 265px; box-shadow: 0 0 16px rgba(16, 185, 129, 0.10); }
-.ov-impact-box--flash { border-color: var(--ov-green); animation: ov-green-flash 1.4s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-@keyframes ov-green-flash {
-    0% { background-color: rgba(16, 185, 129, 0.35); border-color: #6EE7B7; box-shadow: 0 0 42px rgba(16, 185, 129, 0.78); transform: scale(1.015); }
-    100% { background-color: var(--ov-panel-deep); border-color: rgba(16, 185, 129, 0.65); box-shadow: 0 0 22px rgba(16, 185, 129, 0.25); transform: scale(1); }
-}
-.ov-impact-label { font-family: var(--ov-font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ov-text-muted); }
-.ov-impact-value { font-family: var(--ov-font-mono); font-size: 16px; font-weight: 700; color: var(--ov-green-bright); text-shadow: 0 0 12px rgba(16, 185, 129, 0.35); }
-
-.ov-metrics-bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.ov-metric-card { background: var(--ov-panel); border: 1px solid var(--ov-border); border-radius: 6px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; }
-.ov-metric-card--alert { border-color: rgba(239, 68, 68, 0.65); background: linear-gradient(180deg, rgba(239, 68, 68, 0.10) 0%, var(--ov-panel) 100%); }
-.ov-metric-card--ok { border-color: rgba(16, 185, 129, 0.45); background: linear-gradient(180deg, rgba(16, 185, 129, 0.07) 0%, var(--ov-panel) 100%); }
-.ov-metric-head { display: flex; justify-content: space-between; font-family: var(--ov-font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; color: var(--ov-text-muted); }
-.ov-metric-val { font-family: var(--ov-font-mono); font-size: 19px; font-weight: 700; color: var(--ov-text-bright); }
-.ov-metric-val--ok { color: var(--ov-green-bright); }
-.ov-metric-val--alert { color: var(--ov-red-bright); }
-.ov-metric-sub { font-size: 11px; color: var(--ov-text-dim); }
-
-/* Document Diff Shells */
-.ov-doc-shell { background: var(--ov-panel-deep); border: 1px solid var(--ov-border); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; height: 100%; }
-.ov-doc-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #151821; border-bottom: 1px solid var(--ov-border); }
-.ov-doc-title { font-family: var(--ov-font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--ov-text-bright); }
-.ov-pill { font-family: var(--ov-font-mono); font-size: 9.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--ov-border); color: var(--ov-text-muted); }
-.ov-pill--ok { color: var(--ov-green-bright); border-color: rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.12); }
-.ov-pill--alert { color: var(--ov-red-bright); border-color: rgba(239, 68, 68, 0.55); background: rgba(239, 68, 68, 0.14); }
-.ov-doc-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-.ov-line-table { width: 100%; border-collapse: collapse; font-family: var(--ov-font-mono); font-size: 11px; }
-.ov-line-table th { text-align: left; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ov-text-dim); padding: 4px; border-bottom: 1px solid var(--ov-border); background: transparent !important; }
-.ov-line-table th.num, .ov-line-table td.num { text-align: right; }
-.ov-line-table td { padding: 6px 4px; border-bottom: 1px solid rgba(42, 45, 55, 0.55); color: var(--ov-text-bright); background: transparent !important; }
-.ov-line-row--flagged td { background: rgba(239, 68, 68, 0.08) !important; }
-.ov-doc-total { display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid var(--ov-border); font-family: var(--ov-font-mono); font-size: 12px; font-weight: 700; }
-.ov-legal-extract { margin: 0; padding: 8px 10px; background: #090A0D; border: 1px solid var(--ov-border); border-radius: 4px; font-family: var(--ov-font-mono); font-size: 9.5px; line-height: 1.45; color: var(--ov-text-muted); white-space: pre-wrap; max-height: 115px; overflow-y: auto; }
-.hl-ok { display: inline-block; font-family: var(--ov-font-mono); font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.55); border-radius: 4px; padding: 2px 7px; }
-.hl-flag-pulse { display: inline-block; font-family: var(--ov-font-mono); font-weight: 700; color: #FCA5A5; background: rgba(239, 68, 68, 0.22); border: 1px solid rgba(239, 68, 68, 0.8); border-radius: 4px; padding: 2px 7px; animation: ov-flag-pulse 1.6s ease-in-out infinite; }
-@keyframes ov-flag-pulse { 0%, 100% { box-shadow: 0 0 6px rgba(239, 68, 68, 0.3); } 50% { box-shadow: 0 0 18px rgba(239, 68, 68, 0.72); } }
-
-/* Images & Textboxes */
-.gradio-container [data-testid="image"], .gradio-container .image-container, .ov-gr-image [data-testid="image"] {
-    background-color: var(--ov-panel-deep) !important; border: 1px dashed var(--ov-border) !important; border-radius: 6px !important; color: var(--ov-text-muted) !important;
-}
-.gradio-container [data-testid="image"] .icon-buttons button, .gradio-container .icon-button {
-    background-color: var(--ov-panel-elevated) !important; border: 1px solid var(--ov-border) !important; color: var(--ov-text) !important;
-}
-.ov-vision-badge { display: flex; align-items: center; justify-content: space-between; background: var(--ov-panel-deep); border: 1px solid rgba(16, 185, 129, 0.45); border-radius: 6px; padding: 8px 12px; font-family: var(--ov-font-mono); font-size: 11px; color: var(--ov-green-bright); font-weight: 600; }
-.ov-vision-badge--alert { border-color: rgba(239, 68, 68, 0.75); background: rgba(239, 68, 68, 0.10); color: var(--ov-red-bright); }
-.ov-vision-badge span.sub { color: var(--ov-text-muted); font-weight: 400; font-size: 10px; }
-
-.ov-section-label { font-family: var(--ov-font-mono); font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ov-text-muted); }
-.ov-telemetry-box textarea, .ov-dispute-box textarea, .ov-chat-input textarea, .ov-doc-editor textarea { font-family: var(--ov-font-mono) !important; font-size: 11px !important; line-height: 1.55 !important; }
-.ov-telemetry-box textarea { color: #A7F3D0 !important; -webkit-text-fill-color: #A7F3D0 !important; }
-
-/* XAI Chatbot (Bubbles, Markdown & Controls) */
-.ov-chatbot, .ov-chatbot .wrapper, .ov-chatbot .wrap, .ov-chatbot .bubble-wrap, .ov-chatbot .panel-wrap, .ov-chatbot .message-wrap, .ov-chatbot .placeholder {
-    background-color: var(--ov-panel-deep) !important; border-color: var(--ov-border) !important; color: var(--ov-text) !important;
-}
-.ov-chatbot { border: 1px solid var(--ov-border) !important; border-radius: 6px !important; }
-.ov-chatbot .message.bot, .ov-chatbot .bot, .ov-chatbot .panel.bot-row { background-color: #151822 !important; border: 1px solid var(--ov-border) !important; color: var(--ov-text) !important; font-size: 12.5px !important; }
-.ov-chatbot .message.user, .ov-chatbot .user, .ov-chatbot .panel.user-row { background-color: #12141A !important; border: 1px solid rgba(16, 185, 129, 0.45) !important; color: var(--ov-text) !important; font-size: 12.5px !important; }
-.ov-chatbot .md, .ov-chatbot .md *, .ov-chatbot .prose, .ov-chatbot .prose * { color: var(--ov-text) !important; opacity: 1 !important; }
-.ov-chatbot .md code, .ov-chatbot .md pre { background-color: var(--ov-bg) !important; color: #A7F3D0 !important; border: 1px solid var(--ov-border) !important; border-radius: 4px !important; padding: 1px 5px !important; }
-.ov-chatbot .message-buttons button, .ov-chatbot .scroll-down-button-container button { background-color: #151822 !important; border: 1px solid var(--ov-border) !important; color: var(--ov-text-muted) !important; }
-.ov-quick-btn button { background: #161922 !important; border: 1px solid var(--ov-border) !important; color: var(--ov-green-bright) !important; font-family: var(--ov-font-mono) !important; font-size: 10.5px !important; min-height: 32px !important; }
-.ov-quick-btn button:hover { border-color: var(--ov-green) !important; }
-
-/* Tabs, Dataframe & File Uploads */
-.gradio-container .tabs, .gradio-container .tab-wrapper, .gradio-container .tab-nav, .gradio-container .tab-container, .gradio-container [role="tablist"] { background-color: transparent !important; border-color: var(--ov-border) !important; }
-.gradio-container button[role="tab"] { background-color: transparent !important; color: var(--ov-text-muted) !important; font-family: var(--ov-font-mono) !important; font-size: 11.5px !important; font-weight: 600 !important; }
-.gradio-container button[role="tab"][aria-selected="true"], .gradio-container button[role="tab"].selected { color: var(--ov-green-bright) !important; border-bottom: 2px solid var(--ov-green) !important; }
-.gradio-container .table-wrap, .gradio-container [data-testid="dataframe"] { background-color: var(--ov-panel-deep) !important; border: 1px solid var(--ov-border) !important; border-radius: 6px !important; color: var(--ov-text) !important; }
-.gradio-container .table-wrap th, .gradio-container .table-wrap .header-cell, .gradio-container [data-testid="dataframe"] th { background-color: #151822 !important; color: var(--ov-text-muted) !important; border-color: var(--ov-border) !important; font-family: var(--ov-font-mono) !important; font-size: 11px !important; }
-.gradio-container .table-wrap td, .gradio-container .table-wrap .body-cell, .gradio-container .table-wrap .cell-wrap span, .gradio-container [data-testid="dataframe"] td { color: var(--ov-text) !important; border-color: var(--ov-border) !important; background-color: transparent !important; }
-.gradio-container .table-wrap tbody tr:nth-child(even) { background-color: var(--ov-panel-deep) !important; }
-.gradio-container .table-wrap tbody tr:nth-child(odd) { background-color: var(--ov-panel) !important; }
-.gradio-container [data-testid="file"], .gradio-container .file-preview { background-color: var(--ov-panel-deep) !important; border: 1px dashed var(--ov-border) !important; border-radius: 6px !important; color: var(--ov-text) !important; }
-.gradio-container [data-testid="file"] button { background-color: var(--ov-panel-deep) !important; color: var(--ov-text-muted) !important; }
-
-/* Dark-Mode Sliders & Bloomberg Terminal CFO Boardroom Card */
-.gradio-container input[type="range"] { -webkit-appearance: none !important; appearance: none !important; accent-color: #10B981 !important; background-color: #2A2D37 !important; height: 6px !important; border-radius: 999px !important; border: none !important; cursor: pointer !important; }
-.gradio-container input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none !important; appearance: none !important; width: 16px !important; height: 16px !important; border-radius: 50% !important; background: #34D399 !important; border: 2px solid #0D0F14 !important; box-shadow: 0 0 10px rgba(52, 211, 153, 0.55) !important; margin-top: -5px !important; cursor: pointer !important; }
-.gradio-container input[type="range"]::-moz-range-track { height: 6px !important; border-radius: 999px !important; background: #2A2D37 !important; }
-.gradio-container input[type="range"]::-moz-range-progress { height: 6px !important; border-radius: 999px !important; background: #10B981 !important; }
-.gradio-container input[type="range"]::-moz-range-thumb { width: 16px !important; height: 16px !important; border-radius: 50% !important; background: #34D399 !important; border: 2px solid #0D0F14 !important; }
-.ov-cfo-slider { background: #12141A !important; border: 1px solid #2A2D37 !important; border-radius: 6px !important; padding: 10px 12px !important; }
-.ov-cfo-row { align-items: stretch !important; gap: 14px !important; }
-.ov-cfo-controls-card { background: var(--ov-panel) !important; border: 1px solid var(--ov-border) !important; border-radius: 6px !important; padding: 14px !important; gap: 12px !important; }
-.ov-cfo-bloomberg-card { background: linear-gradient(180deg, #10141D 0%, #0D0F14 100%) !important; border: 1px solid rgba(16, 185, 129, 0.45) !important; border-left: 4px solid #10B981 !important; border-radius: 6px !important; padding: 14px 16px !important; gap: 12px !important; box-shadow: 0 0 24px rgba(16, 185, 129, 0.10) !important; min-width: 0 !important; overflow: visible !important; }
-.ov-cfo-roi-card, .ov-cfo-roi-card .prose, .ov-cfo-roi-card .md { background: #0D0F14 !important; border: 1px solid #2A2D37 !important; border-radius: 6px !important; padding: 16px 18px !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: visible !important; overflow-wrap: anywhere !important; white-space: normal !important; box-sizing: border-box !important; }
-.ov-cfo-roi-card .prose, .ov-cfo-roi-card .md { border: none !important; padding: 0 !important; background: transparent !important; }
-.ov-cfo-roi-card h2 { font-family: var(--ov-font-mono) !important; font-size: clamp(1.15rem, 1.8vw, 1.5rem) !important; font-weight: 700 !important; line-height: 1.4 !important; color: #F3F4F6 !important; margin: 0 0 14px 0 !important; padding-bottom: 12px !important; border-bottom: 1px solid #2A2D37 !important; white-space: normal !important; }
-.ov-cfo-roi-card h2 strong { color: #34D399 !important; font-size: 1.12em !important; text-shadow: 0 0 12px rgba(16, 185, 129, 0.35); }
-.ov-cfo-roi-card ul { list-style: none !important; padding: 0 !important; margin: 0 !important; display: flex !important; flex-direction: column !important; gap: 10px !important; }
-.ov-cfo-roi-card li { background: #12141A !important; border: 1px solid #2A2D37 !important; border-left: 3px solid #10B981 !important; border-radius: 5px !important; padding: 10px 12px !important; font-family: var(--ov-font-mono) !important; font-size: 12.5px !important; line-height: 1.55 !important; color: #D1D5DB !important; white-space: normal !important; }
-.ov-cfo-roi-card li code { background: rgba(16, 185, 129, 0.14) !important; color: #34D399 !important; border: 1px solid rgba(16, 185, 129, 0.35) !important; border-radius: 4px !important; padding: 2px 7px !important; font-family: var(--ov-font-mono) !important; font-weight: 700 !important; }
-
-/* Alert & Dispatch Banners */
-.alert-box { background: linear-gradient(180deg, rgba(239, 68, 68, 0.22) 0%, rgba(239, 68, 68, 0.07) 100%); border: 1px solid rgba(239, 68, 68, 0.8); border-left: 6px solid var(--ov-red); border-radius: 6px; padding: 14px 16px; animation: ov-alert-pulse 1.5s infinite; }
-@keyframes ov-alert-pulse { 0%, 100% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.22); } 50% { box-shadow: 0 0 34px rgba(239, 68, 68, 0.55); } }
-.alert-box .alert-title { font-family: var(--ov-font-mono); font-size: 15px; font-weight: 700; letter-spacing: 0.05em; color: #FFFFFF; margin-bottom: 4px; }
-.alert-box .alert-body { font-size: 12.5px; color: #FECACA; line-height: 1.5; }
-.findings-idle { background: var(--ov-panel-deep); border: 1px solid var(--ov-border); border-left: 4px solid var(--ov-border); border-radius: 6px; padding: 12px 14px; font-family: var(--ov-font-mono); font-size: 11px; color: var(--ov-text-dim); }
-.ov-send-btn button { background: var(--ov-red) !important; color: #FFFFFF !important; font-family: var(--ov-font-mono) !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; border: none !important; min-height: 40px !important; }
-.ov-send-btn button:hover { background: #DC2626 !important; }
-.ov-dispatch-idle { font-family: var(--ov-font-mono); font-size: 10.5px; color: var(--ov-text-dim); padding: 8px 10px; background: var(--ov-panel-deep); border: 1px solid var(--ov-border); border-radius: 6px; }
-.ov-dispatch-success { background: linear-gradient(180deg, rgba(16, 185, 129, 0.20) 0%, rgba(16, 185, 129, 0.07) 100%); border: 1px solid var(--ov-green); border-left: 5px solid var(--ov-green); border-radius: 6px; padding: 10px 14px; box-shadow: 0 0 22px rgba(16, 185, 129, 0.25); }
-.ov-dispatch-title { font-family: var(--ov-font-mono); font-size: 12px; font-weight: 700; color: #ECFDF5; }
-.ov-dispatch-sub { font-family: var(--ov-font-mono); font-size: 10px; color: #A7F3D0; margin-top: 3px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 """
 
 
@@ -1842,59 +1786,57 @@ ul.options li.item:hover, ul.options .item:hover, ul.options li.item.active, .op
 def render_topbar_html(
     recovered_amount: float = 0.0,
     flash: bool = False,
-    status_text: str = "GYANSUTR RAG + LANGGRAPH // PS-BA1 ARMED",
+    status_text: str = "Checks the purchase order, goods receipt and vendor invoice against each other before anything is paid.",
 ) -> str:
     cls = "ov-impact-box ov-impact-box--flash" if flash else "ov-impact-box"
     return f"""
     <div class="ov-topbar">
       <div>
-        <div class="ov-brand-eyebrow"><span class="ov-dot"></span><span>{escape(status_text)}</span></div>
-        <h1 class="ov-brand-title">PROJECT OVERLORD // FINANCIAL DEFENSE ENGINE</h1>
+        <h1 class="ov-brand-title">Project Overlord</h1>
+        <p class="ov-brand-sub">{escape(status_text)}</p>
       </div>
       <div class="{cls}">
-        <div class="ov-impact-label">Financial Impact</div>
-        <div class="ov-impact-value">TOTAL RECOVERED: ${recovered_amount:,.2f}</div>
+        <div class="ov-impact-label">Total recovered</div>
+        <div class="ov-impact-value">${recovered_amount:,.2f}</div>
       </div>
     </div>
     """
 
 
 def render_metrics_bar_html(
-    po_authorized: str = "--",
-    gr_verified: str = "--",
+    po_authorized: str = "—",
+    gr_verified: str = "—",
     gr_state: str = "neutral",
-    invoice_billed: str = "--",
-    variance: str = "--",
+    invoice_billed: str = "—",
+    variance: str = "—",
     variance_state: str = "neutral",
 ) -> str:
-    gr_card_cls = "ov-metric-card ov-metric-card--ok" if gr_state == "ok" else ("ov-metric-card ov-metric-card--alert" if gr_state == "alert" else "ov-metric-card")
-    gr_val_cls = "ov-metric-val ov-metric-val--ok" if gr_state == "ok" else ("ov-metric-val ov-metric-val--alert" if gr_state == "alert" else "ov-metric-val")
-    var_card_cls = "ov-metric-card ov-metric-card--alert" if variance_state == "alert" else "ov-metric-card"
-    var_val_cls = "ov-metric-val ov-metric-val--alert" if variance_state == "alert" else "ov-metric-val"
+    """The reconciliation footing: one ruled ledger row, totalled the way an analysis pad is."""
+    state_cls = {"ok": "is-ok", "alert": "is-alert"}
     return f"""
-    <div class="ov-metrics-bar">
-      <div class="ov-metric-card ov-metric-card--ok">
-        <div class="ov-metric-head"><span>PO AUTHORIZED</span><span>[01]</span></div>
-        <div class="ov-metric-val ov-metric-val--ok">{escape(po_authorized)}</div>
-        <div class="ov-metric-sub">Gyansutr Clause RAG</div>
-      </div>
-      <div class="{gr_card_cls}">
-        <div class="ov-metric-head"><span>GR VERIFIED</span><span>[02]</span></div>
-        <div class="{gr_val_cls}">{escape(gr_verified)}</div>
-        <div class="ov-metric-sub">Gemini 3.5 Flash Vision</div>
-      </div>
-      <div class="ov-metric-card">
-        <div class="ov-metric-head"><span>INVOICE BILLED</span><span>[03]</span></div>
-        <div class="ov-metric-val">{escape(invoice_billed)}</div>
-        <div class="ov-metric-sub">Dynamic Line-Item Parser</div>
-      </div>
-      <div class="{var_card_cls}">
-        <div class="ov-metric-head"><span>VARIANCE</span><span>[Δ]</span></div>
-        <div class="{var_val_cls}">{escape(variance)}</div>
-        <div class="ov-metric-sub">3-Way Reconciliation</div>
-      </div>
-    </div>
+    <table class="ov-footing" aria-label="Reconciliation summary">
+      <tr><th>Authorized</th><th>Received</th><th>Billed</th><th>Difference</th></tr>
+      <tr>
+        <td>{escape(po_authorized)}</td>
+        <td class="{state_cls.get(gr_state, '')}">{escape(gr_verified)}</td>
+        <td>{escape(invoice_billed)}</td>
+        <td class="{state_cls.get(variance_state, '')}">{escape(variance)}</td>
+      </tr>
+      <tr>
+        <td class="sub">Purchase order cap</td>
+        <td class="sub">Goods receipt, checked by Gemini Vision</td>
+        <td class="sub">Vendor invoice total</td>
+        <td class="sub">Billed minus payable, verified by the Supervisor</td>
+      </tr>
+    </table>
     """
+
+
+def _doc_source(text: str) -> str:
+    return (
+        '<details class="ov-source"><summary>Original document text</summary>'
+        f'<pre class="ov-legal-extract">{escape(text.strip())}</pre></details>'
+    )
 
 
 def render_po_html_from_text(po_text: str, highlight: bool = False) -> str:
@@ -1908,16 +1850,16 @@ def render_po_html_from_text(po_text: str, highlight: bool = False) -> str:
     return f"""
     <div class="ov-doc-shell">
       <div class="ov-doc-header">
-        <span class="ov-doc-title">01 / PURCHASE ORDER</span>
+        <span class="ov-doc-title">Purchase order<span class="ov-doc-purpose">What was authorized</span></span>
         <span class="ov-pill ov-pill--ok">{escape(po['po_number'])}</span>
       </div>
       <div class="ov-doc-body">
         <table class="ov-line-table">
-          <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Total</th></tr></thead>
+          <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
-        <div class="ov-doc-total"><span>AUTHORIZED AMOUNT</span>{total_html}</div>
-        <pre class="ov-legal-extract">{escape(po_text.strip())}</pre>
+        <div class="ov-doc-total"><span>Authorized amount</span>{total_html}</div>
+        {_doc_source(po_text)}
       </div>
     </div>
     """
@@ -1949,7 +1891,7 @@ def render_invoice_html_from_text(
         tax_cls = ' class="ov-line-row--flagged"' if tax_flag else ""
         tax_cell = f'<span class="hl-flag-pulse">{tax_amt}</span>' if tax_flag else tax_amt
         rows_parts.append(
-            f"<tr{tax_cls}><td>Calculated Tax (10%)</td><td class='num'>1</td><td class='num'>{tax_cell}</td></tr>"
+            f"<tr{tax_cls}><td>Sales tax (10%)</td><td class='num'>1</td><td class='num'>{tax_cell}</td></tr>"
         )
 
     total_str = f"${inv['billed_total']:,.2f}"
@@ -1958,62 +1900,71 @@ def render_invoice_html_from_text(
         if flagged
         else (f'<span class="hl-ok">{total_str}</span>' if cleared else total_str)
     )
-    tax_block = f'<pre class="ov-legal-extract">{escape(TAX_DOC_2024_8842_TEXT)}</pre>' if "4-Way" in (audit_mode or "") else ""
+    tax_block = (
+        f'<details class="ov-source"><summary>Tax document</summary><pre class="ov-legal-extract">{escape(TAX_DOC_2024_8842_TEXT)}</pre></details>'
+        if "4-Way" in (audit_mode or "")
+        else ""
+    )
+    inv_id = escape(inv["invoice_number"])
     pill = (
-        '<span class="ov-pill ov-pill--alert">DISCREPANCY FLAGGED</span>'
+        f'<span class="ov-pill ov-pill--alert">{inv_id} · disputed</span>'
         if flagged
-        else ('<span class="ov-pill ov-pill--ok">CLEARED</span>' if cleared else f'<span class="ov-pill">{escape(inv["invoice_number"])}</span>')
+        else (f'<span class="ov-pill ov-pill--ok">{inv_id} · cleared</span>' if cleared else f'<span class="ov-pill">{inv_id}</span>')
     )
     return f"""
     <div class="ov-doc-shell">
       <div class="ov-doc-header">
-        <span class="ov-doc-title">03 / VENDOR INVOICE</span>
+        <span class="ov-doc-title">Vendor invoice<span class="ov-doc-purpose">What is being billed</span></span>
         {pill}
       </div>
       <div class="ov-doc-body">
         <table class="ov-line-table">
-          <thead><tr><th>Billed Line Item</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
+          <thead><tr><th>Billed item</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
           <tbody>{"".join(rows_parts)}</tbody>
         </table>
-        <div class="ov-doc-total"><span>TOTAL DUE</span>{total_html}</div>
-        <pre class="ov-legal-extract">{escape(inv_text.strip())}</pre>
+        <div class="ov-doc-total"><span>Total due</span>{total_html}</div>
+        {_doc_source(inv_text)}
         {tax_block}
       </div>
     </div>
     """
 
 
-def render_vision_badge_html(confidence: str = "99.4%", detail: str = "1 Item Delivered. Match Confirmed.", alert: bool = False) -> str:
+def render_vision_badge_html(confidence: str = "", detail: str = "Not inspected yet.", alert: bool = False) -> str:
     cls = "ov-vision-badge ov-vision-badge--alert" if alert else "ov-vision-badge"
-    return f'<div class="{cls}"><span>Vision AI Confidence: {escape(confidence)}</span><span class="sub">{escape(detail)}</span></div>'
+    head = f"Vision check · {escape(confidence)} confidence" if confidence else "Vision check"
+    return f'<div class="{cls}"><span>{head}</span><span class="sub">{escape(detail)}</span></div>'
 
 
 def render_findings_html(state: str = "idle", variance: float = 100.0, reason: str = "", chaos_triggered: bool = False) -> str:
     if state == "idle":
-        return '<div class="findings-idle">AUDIT FINDINGS :: Awaiting LangGraph execution...</div>'
+        return '<div class="ov-verdict findings-idle">No verdict yet. Choose a case on the left, then press <strong>Execute 3-Way Match</strong>.</div>'
     if state == "scanning":
-        return '<div class="findings-idle">AUDIT FINDINGS :: Cross-referencing PO, GR, and Invoice...</div>'
+        return '<div class="ov-verdict findings-idle">Checking the three documents against each other…</div>'
     if not chaos_triggered and variance <= 0:
         return (
-            '<div class="findings-idle" style="border-left:5px solid #10B981;color:#A7F3D0;">'
-            '<strong style="color:#34D399;">3-WAY MATCH VERIFIED: CLEARED FOR PAYMENT ($0.00 VARIANCE)</strong><br>'
-            'All line items and Goods Receipt quantities match the authorized PO.'
-            "</div>"
+            '<div class="ov-verdict ov-verdict--ok"><span class="ov-stamp">Cleared</span>'
+            '<div class="alert-title">Cleared for payment: $0.00 difference</div>'
+            '<div class="alert-body">Every billed line and every delivered unit matches the purchase order.</div></div>'
         )
-    headline = (
-        f"VISION ALERT + ${variance:,.2f} OVERCHARGE"
-        if (chaos_triggered and variance > 0)
-        else ("VISION ALERT: SHORT-PAYMENT INITIATED" if chaos_triggered else f"DISCREPANCY DETECTED: ${variance:,.2f} OVERCHARGE")
+    if chaos_triggered and variance > 0:
+        stamp, headline = "Payment held", f"Vision alert and ${variance:,.2f} overcharge"
+    elif chaos_triggered:
+        stamp, headline = "Payment held", "Vision alert: delivery could not be verified"
+    else:
+        stamp, headline = "Dispute", f"Discrepancy detected: ${variance:,.2f} overcharge"
+    return (
+        f'<div class="ov-verdict ov-verdict--alert"><span class="ov-stamp">{stamp}</span>'
+        f'<div class="alert-title">{headline}</div><div class="alert-body">{escape(reason)}</div></div>'
     )
-    return f'<div class="alert-box"><div class="alert-title">{headline}</div><div class="alert-body">{escape(reason)}</div></div>'
 
 
 def render_ledger_kpi_html() -> str:
     rows, total = build_ledger_rows_and_total()
     return (
-        '<div class="ov-dispatch-success" style="display:flex;justify-content:space-between;align-items:center;">'
-        f'<span class="ov-dispatch-title">AUDITED TRANSACTIONS: {len(rows)}</span>'
-        f'<span class="ov-dispatch-title" style="color:#34D399;">CUMULATIVE LEAKAGE BLOCKED: ${total:,.2f}</span>'
+        '<div class="ov-ledger-kpi">'
+        f"<div>Audits recorded<strong>{len(rows)}</strong></div>"
+        f"<div>Overcharges blocked<strong>${total:,.2f}</strong></div>"
         "</div>"
     )
 
@@ -2041,7 +1992,7 @@ def run_audit(
         gr.update(interactive=False, value="Executing Pipeline..."),
         render_topbar_html(recovered_amount=0.0, flash=False),
         render_metrics_bar_html(),
-        f"[{_ts()}] QUEUE :: Locking Mission Control & preparing {audit_mode}...",
+        f"[{_ts()}] QUEUE :: Preparing {audit_mode}...",
         render_findings_html("scanning"),
         "",
         render_po_html_from_text(live_po_text, highlight=False),
@@ -2049,7 +2000,7 @@ def run_audit(
         render_vision_badge_html(),
         {"executed": False},
         [],
-        '<div class="ov-dispatch-idle">API DISPATCH STANDBY // Audit in progress</div>',
+        '<div class="ov-dispatch-idle">Checking documents…</div>',
         gr.update(value="Send Dispute to Vendor", interactive=True),
         build_ledger_rows_and_total()[0],
         render_ledger_kpi_html(),
@@ -2115,8 +2066,8 @@ def run_audit(
                     if has_gr:
                         gr_short = bool(gr_data.get("xai_bbox_drawn"))
                         gr_ver = (
-                            "VISION ALERT" if chaos_hit
-                            else (f"SHORT {gr_data.get('delivered_qty')}/{gr_data.get('ordered_qty')}" if gr_short else "VERIFIED")
+                            "Not verified" if chaos_hit
+                            else (f"{gr_data.get('delivered_qty')} of {gr_data.get('ordered_qty')} units" if gr_short else "All units")
                         )
                         gr_st = "alert" if (chaos_hit or gr_short) else "ok"
                         vision_badge = render_vision_badge_html(
@@ -2125,7 +2076,7 @@ def run_audit(
                             alert=chaos_hit or bool(gr_data.get("xai_bbox_drawn")),
                         )
                     else:
-                        gr_ver, gr_st = "--", "neutral"
+                        gr_ver, gr_st = "—", "neutral"
                         vision_badge = render_vision_badge_html()
 
                     audit_ctx = {
@@ -2152,7 +2103,7 @@ def run_audit(
                     chat_init = (
                         [{
                             "role": "assistant",
-                            "content": f"Audit complete for **{audit_ctx['inv_id']}** ({audit_ctx['po_id']}). Ask me **\"Why did you flag this?\"** or click a quick-ask chip below.",
+                            "content": f"Audit complete for **{audit_ctx['inv_id']}** ({audit_ctx['po_id']}). Ask me why it was flagged, or use a question button below.",
                         }]
                         if is_done
                         else []
@@ -2164,11 +2115,11 @@ def run_audit(
                         gr.update(interactive=is_done, value="Execute 3-Way Match" if is_done else "Executing Pipeline..."),
                         render_topbar_html(recovered_amount=recovered if is_done else 0.0, flash=is_done and flagged),
                         render_metrics_bar_html(
-                            po_authorized=f"${po_amt:,.2f}" if has_po else "--",
+                            po_authorized=f"${po_amt:,.2f}" if has_po else "—",
                             gr_verified=gr_ver,
                             gr_state=gr_st,
-                            invoice_billed=f"${inv_amt:,.2f}" if has_inv else "--",
-                            variance=(f"+${variance:,.2f}" if (flagged and variance > 0) else ("VISION HOLD" if (flagged and chaos_hit) else ("$0.00" if (is_done and not flagged) else "--"))),
+                            invoice_billed=f"${inv_amt:,.2f}" if has_inv else "—",
+                            variance=(f"+${variance:,.2f}" if (flagged and variance > 0) else ("Held" if (flagged and chaos_hit) else ("$0.00" if (is_done and not flagged) else "—"))),
                             variance_state="alert" if flagged else "neutral",
                         ),
                         "\n".join(cumulative_logs),
@@ -2186,7 +2137,7 @@ def run_audit(
                         vision_badge,
                         audit_ctx,
                         chat_init,
-                        '<div class="ov-dispatch-idle">API DISPATCH STANDBY // Ready to execute dispute</div>',
+                        '<div class="ov-dispatch-idle">Dispute not sent yet.</div>',
                         gr.update(value="Send Dispute to Vendor", interactive=True),
                         ledger_rows,
                         render_ledger_kpi_html(),
@@ -2208,7 +2159,7 @@ def run_audit(
             render_vision_badge_html(),
             {"executed": False},
             [],
-            '<div class="ov-dispatch-idle">API DISPATCH STANDBY // Safe recovery complete</div>',
+            '<div class="ov-dispatch-idle">The check stopped early and recovered safely. Run it again.</div>',
             gr.update(value="Send Dispute to Vendor"),
             ledger_rows,
             render_ledger_kpi_html(),
@@ -2224,135 +2175,167 @@ def run_audit(
 # 10. GRADIO 6.32.0 MISSION CONTROL UI
 # ==============================================================================
 
-with gr.Blocks(title="PROJECT OVERLORD // FINANCIAL DEFENSE ENGINE", fill_width=True) as demo:
+with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=True) as demo:
     audit_context_state = gr.State({"executed": False})
     init_rows, _ = build_ledger_rows_and_total()
+    _live = _build_genai_client() is not None
 
     with gr.Row(elem_classes=["ov-shell"]):
         with gr.Column(scale=1, min_width=280, elem_classes=["ov-sidebar"]):
-            gr.HTML('<div class="ov-sidebar-brand"><div class="title">OVERLORD // PS-BA1</div><div class="sub">FINANCIAL DEFENSE ENGINE</div></div>')
+            gr.HTML(
+                '<div class="ov-sidebar-brand"><div class="title">Project Overlord</div>'
+                '<div class="sub">Financial defense engine · Track PS-BA1</div></div>'
+                '<ol class="ov-sidebar-steps">'
+                "<li><strong>Pick a case</strong> or edit the documents.</li>"
+                "<li><strong>Run the check.</strong> Five agents compare all three documents.</li>"
+                "<li><strong>Read the verdict</strong>, then dispute or pay.</li>"
+                "</ol>"
+            )
+            scenario_selector = gr.Dropdown(label="Case", choices=list(SCENARIOS.keys()), value=DEFAULT_SCENARIO, interactive=True)
+            audit_mode = gr.Dropdown(
+                label="Check type",
+                choices=["3-Way Match", "2-Way Match", "4-Way Match (Tax Verification)"],
+                value="3-Way Match",
+                interactive=True,
+                info="2-way skips the goods receipt; 4-way adds the tax document.",
+            )
+            apply_tax_toggle = gr.Checkbox(label="Add 10% sales tax", value=False, info="Applies tax to the invoice and the authorized amount.")
+            with gr.Column(elem_classes=["ov-chaos-wrap"]):
+                chaos_mode = gr.Checkbox(label="Chaos Mode", value=False, info="Feeds the Vision agent a tampered receipt to prove nothing is hardcoded.")
+            run_btn = gr.Button("Execute 3-Way Match", variant="primary", elem_classes=["ov-exec-btn"])
             gr.HTML(
                 '<div class="ov-status-stack">'
-                '<div class="ov-status-line"><span class="ov-dot"></span>GYANSUTR RAG : ARMED</div>'
                 + (
-                    '<div class="ov-status-line"><span class="ov-dot"></span>GEMINI API : CONNECTED</div>'
-                    if _build_genai_client() is not None
-                    else '<div class="ov-status-line"><span class="ov-dot ov-dot--amber"></span>GEMINI API : OFFLINE (DETERMINISTIC)</div>'
+                    '<div class="ov-status-line"><span class="ov-dot"></span>Gemini connected</div>'
+                    if _live
+                    else '<div class="ov-status-line"><span class="ov-dot ov-dot--amber"></span>Gemini offline: deterministic engine in use</div>'
                 )
-                + '<div class="ov-status-line"><span class="ov-dot"></span>LANGGRAPH : 5-NODE FSM</div>'
+                + '<div class="ov-status-line"><span class="ov-dot"></span>Clause search ready</div>'
                 "</div>"
+                '<div class="ov-sidebar-footer">Agents: PO parser, Vision, Invoice parser, Auditor, Supervisor.<br>'
+                "Every result is written to an append-only audit ledger.</div>"
             )
-            scenario_selector = gr.Dropdown(label="Demo Scenario", choices=list(SCENARIOS.keys()), value=DEFAULT_SCENARIO, interactive=True)
-            audit_mode = gr.Dropdown(label="Audit Mode", choices=["3-Way Match", "2-Way Match", "4-Way Match (Tax Verification)"], value="3-Way Match", interactive=True)
-            apply_tax_toggle = gr.Checkbox(label="Apply 10% Tax Node", value=False, info="Live Donut-Challenge tax validation hook")
-            with gr.Column(elem_classes=["ov-chaos-wrap"]):
-                chaos_mode = gr.Checkbox(label="Chaos Mode", value=False, info="Injects adversarial Gemini Vision GR failures")
-            run_btn = gr.Button("Execute 3-Way Match", elem_classes=["ov-exec-btn"])
-            gr.HTML('<div class="ov-sidebar-footer">TRACK&nbsp;&nbsp;&nbsp;PS-BA1<br>PARSER&nbsp;&nbsp;PYMUPDF + REGEX<br>VISION&nbsp;&nbsp;PIL + GEMINI 3.5<br>LEDGER&nbsp;&nbsp;FSYNC JSONL</div>')
 
         with gr.Column(scale=5, elem_classes=["ov-main"]):
             topbar_html = gr.HTML(value=render_topbar_html(recovered_amount=0.0, flash=False))
             metrics_bar_html = gr.HTML(value=render_metrics_bar_html())
 
-            # Three Columns: 01 / PURCHASE ORDER | 02 / GOODS RECEIPT | 03 / VENDOR INVOICE
             with gr.Row(elem_classes=["overlord-row"]):
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
                     with gr.Tabs():
-                        with gr.Tab("XAI Diff View"):
+                        with gr.Tab("Review"):
                             po_html = gr.HTML(value=render_po_html_from_text(SCENARIOS[DEFAULT_SCENARIO]["po_text"], highlight=False))
                         with gr.Tab("Edit / Upload PDF"):
-                            po_upload = gr.File(label="Upload PO (.pdf / .txt)", file_types=[".pdf", ".txt"], type="filepath")
-                            po_text_box = gr.Textbox(label="Purchase Order Text", value=SCENARIOS[DEFAULT_SCENARIO]["po_text"], lines=11, elem_classes=["ov-doc-editor"])
+                            po_upload = gr.File(label="Upload a purchase order (.pdf or .txt)", file_types=[".pdf", ".txt"], type="filepath")
+                            po_text_box = gr.Textbox(label="Purchase order text", value=SCENARIOS[DEFAULT_SCENARIO]["po_text"], lines=11, elem_classes=["ov-doc-editor"])
 
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
-                    gr.HTML('<div class="ov-doc-header" style="border:1px solid #2A2D37;border-radius:6px;"><span class="ov-doc-title">02 / GOODS RECEIPT</span><span class="ov-pill ov-pill--ok">GEMINI VISION</span></div>')
-                    gr_image = gr.Image(value=DEFAULT_GR_IMAGE_PATH, label="02 / GOODS RECEIPT", show_label=False, sources=["upload", "clipboard"], type="filepath", height=225, buttons=["fullscreen"], elem_classes=["ov-gr-image"])
+                    gr.HTML(
+                        '<div class="ov-doc-shell"><div class="ov-doc-header">'
+                        '<span class="ov-doc-title">Goods receipt<span class="ov-doc-purpose">What actually arrived at the dock</span></span>'
+                        '<span class="ov-pill">Photo or scan</span></div></div>'
+                    )
+                    gr_image = gr.Image(
+                        value=DEFAULT_GR_IMAGE_PATH,
+                        label="Goods receipt image",
+                        show_label=False,
+                        sources=["upload", "clipboard"],
+                        type="filepath",
+                        height=240,
+                        buttons=["fullscreen"],
+                        elem_classes=["ov-gr-image"],
+                    )
                     vision_badge_html = gr.HTML(value=render_vision_badge_html())
 
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
                     with gr.Tabs():
-                        with gr.Tab("XAI Diff View"):
+                        with gr.Tab("Review"):
                             invoice_html = gr.HTML(value=render_invoice_html_from_text(SCENARIOS[DEFAULT_SCENARIO]["inv_text"], "3-Way Match", flagged=False))
                         with gr.Tab("Edit / Upload PDF"):
-                            inv_upload = gr.File(label="Upload Invoice (.pdf / .txt)", file_types=[".pdf", ".txt"], type="filepath")
-                            inv_text_box = gr.Textbox(label="Vendor Invoice Text", value=SCENARIOS[DEFAULT_SCENARIO]["inv_text"], lines=11, elem_classes=["ov-doc-editor"])
+                            inv_upload = gr.File(label="Upload a vendor invoice (.pdf or .txt)", file_types=[".pdf", ".txt"], type="filepath")
+                            inv_text_box = gr.Textbox(label="Vendor invoice text", value=SCENARIOS[DEFAULT_SCENARIO]["inv_text"], lines=11, elem_classes=["ov-doc-editor"])
 
-            # Bottom Workspace Tabs: Live Audit & XAI Copilot | Compliance Ledger & Export
             with gr.Tabs():
-                with gr.Tab("Live Audit & XAI Copilot"):
+                with gr.Tab("Verdict and actions"):
                     with gr.Row(elem_classes=["overlord-row"]):
                         with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
-                            gr.HTML('<div class="ov-section-label">LangGraph Telemetry Stream</div>')
-                            telemetry_log = gr.Textbox(show_label=False, value="TELEMETRY :: Awaiting 3-Way Match execution...", lines=8, max_lines=10, interactive=False, autoscroll=True, elem_classes=["ov-telemetry-box"])
-                            gr.HTML('<div class="ov-section-label" style="margin-top:4px;">Explainable AI // Chat with the Auditor</div>')
-                            auditor_chat = gr.Chatbot(value=[], show_label=False, height=205, autoscroll=True, placeholder="Ask about the PO, Invoice, or GR (e.g. 'What is the invoice about?')", elem_classes=["ov-chatbot"])
-                            with gr.Row():
-                                quick_why_btn = gr.Button("Why did you flag this?", elem_classes=["ov-quick-btn"], scale=1)
-                                quick_sum_btn = gr.Button("Summarize Invoice", elem_classes=["ov-quick-btn"], scale=1)
-                            with gr.Row():
-                                quick_memo_btn = gr.Button("Draft Payment Approval", elem_classes=["ov-quick-btn"], scale=1)
-                                quick_450_btn = gr.Button("What if the invoice was $450?", elem_classes=["ov-quick-btn"], scale=1)
-                            with gr.Row():
-                                chat_input = gr.Textbox(show_label=False, placeholder="Ask the Overlord Auditor...", lines=1, scale=4, elem_classes=["ov-chat-input"])
-                                chat_send_btn = gr.Button("Ask", elem_classes=["ov-quick-btn"], scale=1)
-
-                        with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
                             audit_findings_html = gr.HTML(value=render_findings_html("idle"))
-                            gr.HTML('<div class="ov-section-label">Auto-Drafted Vendor Dispute Email</div>')
-                            dispute_email = gr.Textbox(show_label=False, value="", placeholder="Auto-drafted vendor dispute email will appear here...", lines=9, max_lines=12, interactive=True, buttons=["copy"], elem_classes=["ov-dispute-box"])
+                            gr.HTML('<div class="ov-section-label">Dispute email <span class="ov-section-hint">Drafted automatically. Edit before sending.</span></div>')
+                            dispute_email = gr.Textbox(
+                                show_label=False,
+                                value="",
+                                placeholder="The dispute email appears here after a check finds a problem.",
+                                lines=9,
+                                max_lines=14,
+                                interactive=True,
+                                buttons=["copy"],
+                                elem_classes=["ov-dispute-box"],
+                            )
                             with gr.Row():
                                 send_dispute_btn = gr.Button("Send Dispute to Vendor", elem_classes=["ov-send-btn"], scale=1)
-                                proceed_pay_btn = gr.Button("Proceed to Payment", elem_classes=["ov-quick-btn"], scale=1)
-                            dispatch_banner_html = gr.HTML(value='<div class="ov-dispatch-idle">API DISPATCH STANDBY // Ready to execute dispute</div>')
+                                proceed_pay_btn = gr.Button("Proceed to Payment", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
+                            dispatch_banner_html = gr.HTML(value='<div class="ov-dispatch-idle">Dispute not sent yet.</div>')
 
-                            # UPI Payment Gateway Checkout Panel (revealed on "Proceed to Payment")
                             with gr.Column(visible=False, elem_classes=["overlord-panel-col"]) as upi_checkout_col:
-                                gr.HTML(
-                                    '<div class="ov-doc-header" style="border:1px solid #2A2D37;border-radius:6px;">'
-                                    '<span class="ov-doc-title">UPI PAYMENT GATEWAY // MOCK CHECKOUT</span>'
-                                    '<span class="ov-pill ov-pill--ok">9458175464@yesfam</span>'
-                                    "</div>"
-                                )
-                                upi_status_html = gr.HTML(value='<div class="ov-dispatch-idle">Scan to Pay via UPI: 9458175464@yesfam (Placeholder Donation Mode)</div>')
-                                upi_qr_img = gr.Image(label="Scan to Pay via UPI: 9458175464@yesfam", height=180, interactive=False, visible=True)
-                                upi_fallback_txt = gr.Textbox(label="Fallback UPI Payment String", value=UPI_PAYMENT_STRING, interactive=False, visible=False, elem_classes=["ov-doc-editor"])
+                                gr.HTML(f'<div class="ov-section-label">Pay with UPI <span class="ov-section-hint">Demo request to {UPI_VPA}</span></div>')
+                                upi_status_html = gr.HTML(value='<div class="ov-dispatch-idle">Scan the code with any UPI app.</div>')
+                                upi_qr_img = gr.Image(label="UPI payment code", height=200, interactive=False, visible=True)
+                                upi_fallback_txt = gr.Textbox(label="UPI payment link", value=UPI_PAYMENT_STRING, interactive=False, visible=False, elem_classes=["ov-doc-editor"])
                                 with gr.Row():
-                                    sim_pay_btn = gr.Button("Simulate Payment Success", elem_classes=["ov-exec-btn"], scale=2)
-                                    close_pay_btn = gr.Button("Close", elem_classes=["ov-quick-btn"], scale=1)
+                                    sim_pay_btn = gr.Button("Simulate Payment Success", variant="primary", elem_classes=["ov-exec-btn"], scale=2)
+                                    close_pay_btn = gr.Button("Close", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
                                 pay_success_banner = gr.HTML(value="")
+
+                        with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
+                            gr.HTML('<div class="ov-section-label">Ask the auditor <span class="ov-section-hint">Answers come only from these three documents.</span></div>')
+                            auditor_chat = gr.Chatbot(
+                                value=[],
+                                show_label=False,
+                                height=240,
+                                autoscroll=True,
+                                placeholder="Ask why an invoice was flagged, or what would happen at a different amount.",
+                                elem_classes=["ov-chatbot"],
+                            )
+                            with gr.Row():
+                                quick_why_btn = gr.Button("Why did you flag this?", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
+                                quick_sum_btn = gr.Button("Summarize the invoice", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
+                            with gr.Row():
+                                quick_memo_btn = gr.Button("Draft a payment approval", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
+                                quick_450_btn = gr.Button("What if the invoice was $450?", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
+                            with gr.Row():
+                                chat_input = gr.Textbox(show_label=False, placeholder="Type a question about this audit", lines=1, scale=4, elem_classes=["ov-chat-input"])
+                                chat_send_btn = gr.Button("Ask", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
+                            gr.HTML('<div class="ov-section-label">Agent log <span class="ov-section-hint">Each step the five agents took, in order.</span></div>')
+                            telemetry_log = gr.Textbox(
+                                show_label=False,
+                                value="Run the check to see each agent's steps here.",
+                                lines=8,
+                                max_lines=12,
+                                interactive=False,
+                                autoscroll=True,
+                                elem_classes=["ov-telemetry-box"],
+                            )
 
                 with gr.Tab("Compliance Ledger & Export"):
                     ledger_kpi_html = gr.HTML(value=render_ledger_kpi_html())
                     ledger_table = gr.Dataframe(
-                        headers=["Timestamp (UTC)", "PO", "Invoice", "Mode", "PO Auth", "Billed", "Variance", "Status"],
+                        headers=["Time (UTC)", "PO", "Invoice", "Check", "Authorized", "Billed", "Difference", "Status"],
                         value=init_rows,
                         interactive=False,
                         wrap=True,
                     )
                     with gr.Row():
-                        export_cert_btn = gr.Button("Export Audit Certificate (JSON)", elem_classes=["ov-quick-btn"], scale=1)
-                        cert_file_out = gr.File(label="Download Audit Certificate", scale=2)
+                        export_cert_btn = gr.Button("Export audit certificate (JSON)", variant="secondary", elem_classes=["ov-quick-btn"], scale=1)
+                        cert_file_out = gr.File(label="Audit certificate", scale=2)
 
                 with gr.Tab("CFO Boardroom"):
-                    gr.HTML('<div class="ov-section-label">Executive Financial Defense ROI Calculator</div>')
+                    gr.HTML('<div class="ov-section-label">Annual savings estimate <span class="ov-section-hint">Move the sliders to model your own invoice volume.</span></div>')
                     with gr.Row(elem_classes=["overlord-row", "ov-cfo-row"]):
-                        with gr.Column(scale=2, min_width=300, elem_classes=["overlord-panel-col", "ov-cfo-controls-card"]):
-                            gr.HTML(
-                                '<div class="ov-doc-header" style="border:1px solid #2A2D37;border-radius:6px;">'
-                                '<span class="ov-doc-title">01 / AUDIT VOLUME PARAMETERS</span>'
-                                '<span class="ov-pill">CONTROLS</span>'
-                                "</div>"
-                            )
-                            cfo_invoices_slider = gr.Slider(label="Monthly Invoices Processed", minimum=100, maximum=50000, step=100, value=5000, elem_classes=["ov-cfo-slider"])
-                            cfo_avg_val_slider = gr.Slider(label="Average Invoice Value ($)", minimum=100, maximum=25000, step=50, value=600, elem_classes=["ov-cfo-slider"])
-                            cfo_error_rate_slider = gr.Slider(label="Error Rate (%)", minimum=0.5, maximum=15.0, step=0.1, value=2.5, elem_classes=["ov-cfo-slider"])
-                        with gr.Column(scale=3, min_width=360, elem_classes=["overlord-panel-col", "ov-cfo-bloomberg-card"]):
-                            gr.HTML(
-                                '<div class="ov-doc-header" style="border:1px solid #2A2D37;border-radius:6px;">'
-                                '<span class="ov-doc-title">02 / BLOOMBERG TERMINAL // ANNUALIZED ROI</span>'
-                                '<span class="ov-pill ov-pill--ok">LIVE PROJECTION</span>'
-                                "</div>"
-                            )
+                        with gr.Column(scale=2, min_width=300, elem_classes=["overlord-panel-col"]):
+                            cfo_invoices_slider = gr.Slider(label="Invoices per month", minimum=100, maximum=50000, step=100, value=5000)
+                            cfo_avg_val_slider = gr.Slider(label="Average invoice value ($)", minimum=100, maximum=25000, step=50, value=600)
+                            cfo_error_rate_slider = gr.Slider(label="Share of invoices with errors (%)", minimum=0.5, maximum=15.0, step=0.1, value=2.5)
+                        with gr.Column(scale=3, min_width=360, elem_classes=["overlord-panel-col"]):
                             cfo_roi_md = gr.Markdown(value=calculate_cfo_roi(5000, 600, 2.5), elem_classes=["ov-cfo-roi-card"])
 
     # Event Wiring
@@ -2365,13 +2348,13 @@ with gr.Blocks(title="PROJECT OVERLORD // FINANCIAL DEFENSE ENGINE", fill_width=
             render_po_html_from_text(sc["po_text"], highlight=False),
             render_invoice_html_from_text(sc["inv_text"], m, apply_tax=tax, flagged=False),
             SCENARIO_GR_IMAGES.get(s, DEFAULT_GR_IMAGE_PATH),
-            render_vision_badge_html(detail="Awaiting Vision inspection."),
+            render_vision_badge_html(),
             render_topbar_html(recovered_amount=0.0, flash=False),
             render_metrics_bar_html(),
             render_findings_html("idle"),
             "",
             {"executed": False},
-            '<div class="ov-dispatch-idle">API DISPATCH STANDBY // Ready to execute dispute</div>',
+            '<div class="ov-dispatch-idle">Dispute not sent yet.</div>',
             gr.update(value="Send Dispute to Vendor", interactive=True),
             gr.update(visible=False),
         )

@@ -2,7 +2,7 @@
 
 **Autonomous Three-Way Invoice, Purchase Order & Goods-Receipt Reconciliation Platform**
 
-Project Overlord eliminates Accounts Payable (AP) budget leakage by autonomously cross-referencing **Purchase Orders (PO)**, physical **Goods Receipts (GR)**, and **Vendor Invoices** in real time. Built with **Gyansutr RAG**, a **5-Node LangGraph `StateGraph`**, **Google Gemini (`gemini-3.5-flash`)**, **PyMuPDF**, **Pillow**, **QRCode**, and an **Obsidian Mission Control Gradio 6 UI**.
+Project Overlord eliminates Accounts Payable (AP) budget leakage by autonomously cross-referencing **Purchase Orders (PO)**, physical **Goods Receipts (GR)**, and **Vendor Invoices** in real time. Built with **Gyansutr RAG**, a **5-Node LangGraph `StateGraph`**, **Google Gemini (`gemini-3.5-flash`)**, **PyMuPDF**, **Pillow**, **QRCode**, and a **ledger-style Gradio 6 audit workspace**.
 
 ---
 
@@ -26,7 +26,7 @@ flowchart LR
     C --> D["03: Invoice Parser Node<br/>(Line-Item + 10% Tax Extraction)"]
     D --> E["04: Auditor Node<br/>(3-Way Match + JSONL Receipt + Dispute Draft)"]
     E --> F["05: Supervisor Node<br/>(Independent Arithmetic Verification)"]
-    F --> G["END (Mission Control UI)"]
+    F --> G["END (Audit workspace UI)"]
 ```
 
 ### The 5-Agent LangGraph Swarm (`OVERLORD_GRAPH`)
@@ -57,7 +57,7 @@ flowchart LR
 | **Audit Modes & Tax Hook** | Left Sidebar (`Audit Mode` / `Apply 10% Tax Node`) | Switch between `3-Way Match`, `2-Way Match`, and `4-Way Match (Tax Verification)` (`TAX-DOC-2024-8842`), plus a live 10% Tax Node checkbox. |
 | **Chaos Mode** | Left Sidebar (`Chaos Mode`) | Injects live adversarial Vision failures (`38.4%` confidence alert) mid-demo to prove the Vision pipeline isn't hardcoded. |
 | **Live PDF / Text Ingestion** | Cols 1 & 3 (`Edit / Upload PDF` tabs) | Upload custom `.pdf` or `.txt` Purchase Orders and Invoices (parsed via `pymupdf`) or edit amounts live and watch XAI diffing recompute. |
-| **3-Column XAI Visual Diffing** | Top Workspace (`01 / PO`, `02 / GR`, `03 / Invoice`) | Highlights authorized PO amounts in green (`.hl-ok`), pulses unauthorized invoice fees/totals in red (`.hl-flag-pulse`), and flashes `TOTAL RECOVERED` in the header. |
+| **3-Column XAI Visual Diffing** | Top Workspace (`01 / PO`, `02 / GR`, `03 / Invoice`) | Highlights authorized PO amounts in green (`.hl-ok`, with a check mark), pulses unauthorized invoice fees/totals in red (`.hl-flag-pulse`), and flashes `TOTAL RECOVERED` in the header. |
 | **Vision XAI Bounding Box** | Col 2 (`02 / GOODS RECEIPT`) | Dynamically draws a red bounding box over empty manifest bays when units are missing (Scenario B). |
 | **Explainable AI Chatbot** | Bottom Left (`Chat with the Auditor`) | Context-injected `gr.Chatbot` powered by Gemini 3.5 Flash with grounded offline fallback, domain guardrails (politely rejects off-topic questions like *"What is the capital of France?"*), and 4 quick-ask buttons: **Why did you flag this?**, **Summarize Invoice**, **Draft Payment Approval**, and **What if the invoice was $450?**. |
 | **Send Dispute Kill Shot** | Bottom Right (`Send Dispute to Vendor`) | Dispatches the dispute email, displays `[SUCCESS] Dispute dispatched to vendor via API. Funds secured.`, logs to JSONL, and pops up an annualized scale ROI toast (`$120,000 saved this year` at 5,000 invoices/month). |
@@ -72,7 +72,7 @@ flowchart LR
 
 ```text
 ZeroTouch-AP-Auditor/
-├── app.py                     # Complete application (RAG + 5-node LangGraph + Gradio 6 Obsidian UI)
+├── app.py                     # Complete application (RAG + 5-node LangGraph + Gradio 6 ledger-style UI)
 ├── requirements.txt           # Runtime Python dependencies
 ├── requirements-dev.txt       # Test & lint dependencies (pytest, ruff)
 ├── pyproject.toml             # Project metadata, pytest & ruff configuration
