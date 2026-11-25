@@ -169,8 +169,12 @@ HEADING_PATTERN = re.compile(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-AUDIT_RECEIPTS_PATH = os.path.join(BASE_DIR, "workspace", "receipts", "overlord_audit.jsonl")
-CERT_EXPORT_DIR = os.path.join(BASE_DIR, "workspace", "exports")
+# Serverless hosts (Vercel sets VERCEL=1) only allow writes under the temp dir.
+WORKSPACE_DIR = os.getenv("OVERLORD_WORKSPACE_DIR") or (
+    os.path.join(tempfile.gettempdir(), "overlord_workspace") if os.getenv("VERCEL") else os.path.join(BASE_DIR, "workspace")
+)
+AUDIT_RECEIPTS_PATH = os.path.join(WORKSPACE_DIR, "receipts", "overlord_audit.jsonl")
+CERT_EXPORT_DIR = os.path.join(WORKSPACE_DIR, "exports")
 
 
 def extract_uploaded_document_text(file_path: str | None) -> str:

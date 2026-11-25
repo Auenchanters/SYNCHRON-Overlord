@@ -12,3 +12,7 @@ tests/
 *.md
 workspace/receipts/*.jsonl
 workspace/exports/*.json
+.claude/
+.impeccable/
+workspace/
+public/
