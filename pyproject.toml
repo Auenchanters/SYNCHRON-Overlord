@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zerotouch-ap-auditor"
+version = "1.0.0"
+description = "Project Overlord - zero-touch 3-way AP reconciliation (PO vs Goods Receipt vs Invoice) with LangGraph, Gemini and a Gradio mission-control UI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary - hackathon submission (PS-BA1)" }
+keywords = ["accounts-payable", "audit", "langgraph", "gemini", "gradio", "xai"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+# Keep these in step with requirements.txt, which is the pinned install path.
+dependencies = [
+    "gradio==6.32.0",
+    "langgraph==1.2.24",
+    "langchain-google-genai==4.5.2",
+    "python-dotenv>=1.0.0",
+    "pymupdf>=1.24.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+
+[project.urls]
+Documentation = "README.md"
+
+[tool.setuptools]
+py-modules = ["app"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
