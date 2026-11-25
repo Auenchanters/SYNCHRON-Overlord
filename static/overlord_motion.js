@@ -20,7 +20,17 @@ const T = {
 const MAX_STAGGER = T.dur.considered; // Arc: total stagger stays under ~0.48s however long the text is.
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const PAD = { paper: "#F4F7EF", rule: "#CFDBC6", margin: "#D9A39C", ink: "#1D2721", ink2: "#46554B", green: "#1C6B43" };
+const THEME_KEY = "ov-theme";
+const isDark = () => document.documentElement.dataset.ovTheme === "dark";
+// Apply the saved choice before anything renders, so the intro matches the dashboard behind it.
+// Light stays the default: it is the projector-safe look, and dark is opt-in.
+try {
+  if (localStorage.getItem(THEME_KEY) === "dark") document.documentElement.dataset.ovTheme = "dark";
+} catch {}
+
+const PAD = isDark()
+  ? { paper: "#121A16", rule: "#24322A", margin: "#6E3A34", ink: "#E6EDE7", ink2: "#A9B8AE", green: "#5BC995" }
+  : { paper: "#F4F7EF", rule: "#CFDBC6", margin: "#D9A39C", ink: "#1D2721", ink2: "#46554B", green: "#1C6B43" };
 
 /* ------------------------------------------------------------------ */
 /* Landing page                                                        */
@@ -132,7 +142,7 @@ function rasterizeIntro(intro, W, H) {
 
 function buildParticles(pixels, W, H) {
   // Ink is sampled densely so letters keep their shape; paper sparsely, sized to tile the screen.
-  const paperRGB = [0xf4, 0xf7, 0xef];
+  const paperRGB = [1, 3, 5].map((i) => parseInt(PAD.paper.slice(i, i + 2), 16));
   const pos = [], col = [], size = [], delay = [], rnd = [];
   const push = (x, y, i, s, rgb = null) => {
     pos.push(x, y, 0);
@@ -162,7 +172,7 @@ function buildParticles(pixels, W, H) {
 
 const VERT = `
 attribute vec3 aColor; attribute float aSize; attribute float aDelay; attribute vec3 aRand;
-uniform float uTime; uniform float uPR;
+uniform float uTime; uniform float uPR; uniform vec3 uDust;
 varying vec3 vColor; varying float vAlpha;
 void main() {
   float life = 1.15 + aRand.z * 0.7;
@@ -173,7 +183,7 @@ void main() {
   p.x += e * (700.0 + aRand.x * 900.0) + sin(t * 7.0 + aRand.y * 12.0) * 26.0 * t;
   p.y -= e * (180.0 + aRand.y * 420.0) + cos(t * 6.0 + aRand.x * 12.0) * 34.0 * t;
   // Motes darken as they lift, so paper-coloured dust stays visible over the paper-coloured dashboard.
-  vColor = mix(aColor, vec3(0.36, 0.42, 0.38), smoothstep(0.0, 0.35, t) * 0.42);
+  vColor = mix(aColor, uDust, smoothstep(0.0, 0.35, t) * 0.42);
   vAlpha = 1.0 - smoothstep(0.45, 1.0, t);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   gl_PointSize = aSize * uPR * mix(1.0, 0.35, t);
@@ -203,7 +213,9 @@ function runDust(intro) {
   geo.setAttribute("aSize", new THREE.Float32BufferAttribute(size, 1));
   geo.setAttribute("aDelay", new THREE.Float32BufferAttribute(delay, 1));
   geo.setAttribute("aRand", new THREE.Float32BufferAttribute(rnd, 3));
-  const uniforms = { uTime: { value: 0 }, uPR: { value: renderer.getPixelRatio() } };
+  // Raw 0-1 values (not THREE.Color) so the dust tint matches the sampled sRGB pixels exactly.
+  const dust = isDark() ? new THREE.Vector3(0.66, 0.74, 0.69) : new THREE.Vector3(0.36, 0.42, 0.38);
+  const uniforms = { uTime: { value: 0 }, uPR: { value: renderer.getPixelRatio() }, uDust: { value: dust } };
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms, transparent: true, depthTest: false, depthWrite: false });
   scene.add(new THREE.Points(geo, mat));
 
@@ -339,11 +351,14 @@ function onDashboardChange() {
   const rows = document.querySelectorAll(".ov-line-row--flagged td");
   const flagSig = [...rows].map((td) => td.textContent).join("|");
   if (rows.length && flagSig !== seen.flags && !REDUCED) {
+    // Animate to the current theme's tint, then hand the colour back to CSS so a later theme switch applies.
+    const tint = getComputedStyle(rows[0]).backgroundColor;
     animate(rows, {
-      backgroundColor: ["rgba(248,226,222,0)", "rgba(248,226,222,1)"],
+      backgroundColor: ["rgba(0,0,0,0)", tint],
       duration: T.dur.considered,
       delay: stagger(T.stagger.item),
       ease: T.ease.standard,
+      onComplete: () => rows.forEach((td) => td.style.removeProperty("background-color")),
     });
   }
   seen.flags = flagSig;
@@ -376,5 +391,46 @@ function watchDashboard() {
   }).observe(document.body, { childList: true, subtree: true, characterData: true });
 }
 
+/* ------------------------------------------------------------------ */
+/* Light / dark toggle: the new theme wipes in as a circle from the    */
+/* switch (View Transitions API), or swaps instantly where unsupported. */
+/* ------------------------------------------------------------------ */
+
+function syncThemeToggle() {
+  const toggle = document.getElementById("ov-theme-toggle");
+  if (toggle) toggle.setAttribute("aria-checked", String(isDark()));
+}
+
+function setTheme(dark, origin) {
+  const apply = () => {
+    if (dark) document.documentElement.dataset.ovTheme = "dark";
+    else delete document.documentElement.dataset.ovTheme;
+    try { localStorage.setItem(THEME_KEY, dark ? "dark" : "light"); } catch {}
+    syncThemeToggle();
+  };
+  if (REDUCED || !document.startViewTransition) return apply();
+  const r = origin.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  document.startViewTransition(apply).ready.then(() => {
+    document.documentElement.animate(
+      { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+      { duration: T.dur.considered * 1.25, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
+    );
+  });
+}
+
+document.addEventListener("click", (e) => {
+  const toggle = e.target.closest?.("#ov-theme-toggle");
+  if (toggle) setTheme(!isDark(), toggle);
+});
+
 startIntro();
 watchDashboard();
+// The switch is rendered by Gradio after this module runs; sync it once it exists.
+new MutationObserver((_, obs) => {
+  if (document.getElementById("ov-theme-toggle")) {
+    syncThemeToggle();
+    obs.disconnect();
+  }
+}).observe(document.body, { childList: true, subtree: true });

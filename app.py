@@ -1527,6 +1527,50 @@ _MOTION_JS = Path(STATIC_DIR, "overlord_motion.js")
 # ?v= busts browser caches whenever the script changes.
 MOTION_SCRIPT_URL = f"/gradio_api/file={quote(_MOTION_JS.as_posix(), safe='/:')}?v={int(_MOTION_JS.stat().st_mtime)}"
 OVERLORD_HEAD += f'<script type="module" src="{MOTION_SCRIPT_URL}"></script>'
+# Palette variables live in the head, not OVERLORD_CSS: Gradio re-scopes custom CSS under
+# `.dark .gradio-container .contain`, which would re-apply the light palette inside dark mode.
+OVERLORD_HEAD += """<style>
+:root {
+    --pad-paper: #F4F7EF;
+    --pad-paper-2: #E9EFE2;
+    --pad-sheet: #FBFCF8;
+    --pad-rule: #CFDBC6;
+    --pad-rule-strong: #A9BD9E;
+    --pad-ink: #1D2721;
+    --pad-ink-2: #46554B;
+    --pad-ink-3: #5F6E64;
+    --pad-green: #1C6B43;
+    --pad-green-tint: #DCEEDD;
+    --pad-red: #B0271F;
+    --pad-red-tint: #F8E2DE;
+    --pad-sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --pad-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+html[data-ov-theme="dark"], html[data-ov-theme="dark"] .dark, html[data-ov-theme="dark"] .gradio-container {
+    --pad-paper: #121A16; --pad-paper-2: #0E1411; --pad-sheet: #18221D;
+    --pad-rule: #26352C; --pad-rule-strong: #3A4E42;
+    --pad-ink: #E6EDE7; --pad-ink-2: #AEBDB3; --pad-ink-3: #8FA096;
+    --pad-green: #5BC995; --pad-green-tint: #173A2A; --pad-red: #F2857A; --pad-red-tint: #3D1E1B;
+    --body-background-fill: var(--pad-paper) !important; --body-text-color: var(--pad-ink) !important;
+    --body-text-color-subdued: var(--pad-ink-2) !important;
+    --background-fill-primary: var(--pad-sheet) !important; --background-fill-secondary: var(--pad-paper-2) !important;
+    --block-background-fill: var(--pad-sheet) !important; --block-border-color: var(--pad-rule) !important;
+    --block-label-background-fill: var(--pad-sheet) !important; --block-label-text-color: var(--pad-ink-2) !important;
+    --block-title-text-color: var(--pad-ink) !important; --border-color-primary: var(--pad-rule) !important;
+    --input-background-fill: var(--pad-sheet) !important; --input-border-color: var(--pad-rule-strong) !important;
+    --input-placeholder-color: var(--pad-ink-3) !important;
+    --button-primary-background-fill: var(--pad-green) !important; --button-primary-background-fill-hover: #7AD6AA !important;
+    --button-primary-text-color: #0E1411 !important; --button-primary-border-color: var(--pad-green) !important;
+    --button-secondary-background-fill: var(--pad-sheet) !important; --button-secondary-background-fill-hover: var(--pad-paper-2) !important;
+    --button-secondary-text-color: var(--pad-ink) !important; --button-secondary-border-color: var(--pad-rule-strong) !important;
+    --checkbox-background-color: var(--pad-sheet) !important; --checkbox-border-color: var(--pad-rule-strong) !important;
+    --checkbox-label-background-fill: var(--pad-sheet) !important; --checkbox-label-text-color: var(--pad-ink) !important;
+    --table-even-background-fill: var(--pad-sheet) !important; --table-odd-background-fill: var(--pad-paper) !important;
+    --table-border-color: var(--pad-rule) !important; --panel-background-fill: var(--pad-paper-2) !important;
+    --panel-border-color: var(--pad-rule) !important; --color-accent-soft: var(--pad-green-tint) !important;
+    color-scheme: dark;
+}
+</style>"""
 
 # Visual world: an accountant's columnar analysis pad. Pale ruled paper, graphite ink,
 # red ink only for exceptions, green ink only for verified figures. Light on purpose:
@@ -1609,22 +1653,6 @@ OVERLORD_THEME = gr.themes.Base(
 )
 
 OVERLORD_CSS = """
-:root, .dark, .gradio-container {
-    --pad-paper: #F4F7EF;
-    --pad-paper-2: #E9EFE2;
-    --pad-sheet: #FBFCF8;
-    --pad-rule: #CFDBC6;
-    --pad-rule-strong: #A9BD9E;
-    --pad-ink: #1D2721;
-    --pad-ink-2: #46554B;
-    --pad-ink-3: #5F6E64;
-    --pad-green: #1C6B43;
-    --pad-green-tint: #DCEEDD;
-    --pad-red: #B0271F;
-    --pad-red-tint: #F8E2DE;
-    --pad-sans: 'IBM Plex Sans', system-ui, sans-serif;
-    --pad-mono: 'IBM Plex Mono', ui-monospace, monospace;
-}
 
 /* Base */
 body, .gradio-container { background: var(--pad-paper) !important; color: var(--pad-ink) !important; font-family: var(--pad-sans) !important; }
@@ -1654,6 +1682,7 @@ footer { display: none !important; }
 .ov-status-line { display: flex; align-items: center; gap: 8px; }
 .ov-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pad-green); flex: none; }
 .ov-dot--amber { background: #B7791F; }
+html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 
 .ov-sidebar-footer { font-size: 12.5px; color: var(--pad-ink-3); line-height: 1.6; border-top: 1px solid var(--pad-rule); padding-top: 12px; }
 .ov-chaos-wrap { background: transparent !important; border: none !important; padding: 0 !important; flex: none !important; }
@@ -1790,6 +1819,27 @@ footer { display: none !important; }
     .ov-footing th { padding: 8px 8px 2px; }
     .ov-footing td { font-size: 16px; padding: 0 8px 10px; }
 }
+/* Dark mode: the same ledger at night. Opt-in via the sidebar switch (html[data-ov-theme="dark"]). */
+html[data-ov-theme="dark"] .ov-send-btn, html[data-ov-theme="dark"] .ov-send-btn button { color: #1A0E0C !important; }
+html[data-ov-theme="dark"] .ov-send-btn:hover, html[data-ov-theme="dark"] .ov-send-btn button:hover { background: #F6A49B !important; }
+html[data-ov-theme="dark"] .ov-gr-image img { filter: brightness(0.9); }
+
+/* Theme switch */
+.ov-theme-toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 8px 10px;
+    background: var(--pad-sheet); border: 1px solid var(--pad-rule-strong); border-radius: 4px;
+    color: var(--pad-ink); font: 600 13.5px var(--pad-sans); cursor: pointer;
+}
+.ov-theme-toggle:hover { border-color: var(--pad-green); }
+.ov-theme-track { position: relative; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--pad-rule-strong); transition: background-color 200ms ease-out; }
+.ov-theme-track::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--pad-sheet); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ov-theme-toggle[aria-checked="true"] .ov-theme-track { background: var(--pad-green); }
+.ov-theme-toggle[aria-checked="true"] .ov-theme-track::after { transform: translateX(14px); }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 """
 
@@ -2227,6 +2277,8 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                 )
                 + '<div class="ov-status-line"><span class="ov-dot"></span>Clause search ready</div>'
                 "</div>"
+                '<button type="button" id="ov-theme-toggle" class="ov-theme-toggle" role="switch" aria-checked="false">'
+                '<span>Dark mode</span><span class="ov-theme-track" aria-hidden="true"></span></button>'
                 '<div class="ov-sidebar-footer">Agents: PO parser, Vision, Invoice parser, Auditor, Supervisor.<br>'
                 "Every result is written to an append-only audit ledger.</div>"
             )
