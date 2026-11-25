@@ -53,6 +53,8 @@ flowchart LR
 
 | Feature | Where in UI | What It Does |
 | :--- | :--- | :--- |
+| **Landing page & dust transition** | First screen | A plain landing page; one click (or Enter) dissolves it into wind-blown dust rendered with three.js while the dashboard finishes loading behind it. Add `?intro=0` to the URL to skip it. Honors reduced-motion. |
+| **Dashboard motion** | Whole workspace | anime.js, timed with Arc's motion tokens: the verdict stamp lands, the recovered amount counts up, flagged lines and changed totals rise in. Only fires when a value actually changes. Libraries are vendored in `static/vendor/` so it works offline. |
 | **Multi-Scenario Matrix** | Left Sidebar (`Demo Scenario`) | One-click presets: **Scenario A** (`$100` Unauthorized Setup Fee), **Scenario B** (10 GPUs ordered and billed, 8 delivered: `$2,000` short-delivery), and **Scenario C** (`$0.00` Clean 3-Way Match). Each preset loads its own dock-scan Goods Receipt image. |
 | **Audit Modes & Tax Hook** | Left Sidebar (`Audit Mode` / `Apply 10% Tax Node`) | Switch between `3-Way Match`, `2-Way Match`, and `4-Way Match (Tax Verification)` (`TAX-DOC-2024-8842`), plus a live 10% Tax Node checkbox. |
 | **Chaos Mode** | Left Sidebar (`Chaos Mode`) | Injects live adversarial Vision failures (`38.4%` confidence alert) mid-demo to prove the Vision pipeline isn't hardcoded. |

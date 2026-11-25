@@ -3,6 +3,9 @@
 Matches `Project_Overlord_Pitch_Prep_and_Script.pdf`. Before going on stage: server live on
 http://localhost:7860, Scenario A selected, Chaos Mode OFF, browser zoom 80–90%.
 
+Open the page a minute early and leave it on the landing page. The first click anywhere dissolves it into dust and opens the workspace;
+make that click as you say "Meet Project Overlord". Use `http://localhost:7860/?intro=0` to skip the landing page.
+
 ### [0:00 – 0:30] Act 1: The Hook *(no clicking)*
 > "Every year, enterprises lose millions of dollars to a quiet financial leak inside Accounts Payable: uncontracted invoice creep and short-shipped deliveries. Teams still manually cross-reference PDFs, warehouse delivery slips, and vendor invoices across disconnected tools—letting phantom fees slip through under Net-30 pressure.
 >

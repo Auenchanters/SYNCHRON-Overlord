@@ -23,6 +23,7 @@ COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
 COPY app.py ./
+COPY static ./static
 COPY tests ./tests
 
 # Runtime artefacts (ledger + certificates) live here; mount a volume to persist.

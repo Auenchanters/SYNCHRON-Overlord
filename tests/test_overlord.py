@@ -173,3 +173,16 @@ def test_mega_update_modules():
     steps_b_ctx = steps_b[-1][9]
     pay_b, _rows, _kpi = app.simulate_payment_success(steps_b_ctx)
     assert "Payment of $8,000.00 successful." in pay_b
+
+    # 6. Motion layer: the intro script and its vendored libraries are served as JavaScript modules.
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app.gr.mount_gradio_app(FastAPI(), app.demo, path="/", head=app.OVERLORD_HEAD))
+    assert "overlord_motion.js" in client.get("/config").text
+    script = app.MOTION_SCRIPT_URL.split("?")[0]
+    for url in (script, script.replace("overlord_motion.js", "vendor/three.module.min.js"),
+                script.replace("overlord_motion.js", "vendor/three.core.js"),
+                script.replace("overlord_motion.js", "vendor/anime.esm.min.js")):
+        resp = client.get(url)
+        assert resp.status_code == 200 and "javascript" in resp.headers["content-type"], url

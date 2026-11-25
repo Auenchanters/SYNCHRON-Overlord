@@ -22,6 +22,7 @@ import inspect
 import io
 import json
 import math
+import mimetypes
 import operator
 import os
 import random
@@ -36,6 +37,7 @@ from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
+from urllib.parse import quote
 
 import gradio as gr
 from dotenv import load_dotenv
@@ -1517,6 +1519,15 @@ OVERLORD_HEAD = """
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 """
 
+# Motion layer: landing page + dust transition (three.js) and dashboard motion (anime.js), both vendored in static/.
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+mimetypes.add_type("text/javascript", ".js")  # Windows can map .js to text/plain, which browsers refuse for modules
+gr.set_static_paths(paths=[STATIC_DIR])
+_MOTION_JS = Path(STATIC_DIR, "overlord_motion.js")
+# ?v= busts browser caches whenever the script changes.
+MOTION_SCRIPT_URL = f"/gradio_api/file={quote(_MOTION_JS.as_posix(), safe='/:')}?v={int(_MOTION_JS.stat().st_mtime)}"
+OVERLORD_HEAD += f'<script type="module" src="{MOTION_SCRIPT_URL}"></script>'
+
 # Visual world: an accountant's columnar analysis pad. Pale ruled paper, graphite ink,
 # red ink only for exceptions, green ink only for verified figures. Light on purpose:
 # it is read at a desk and on a projector, where dark UIs wash out.
@@ -1736,7 +1747,7 @@ footer { display: none !important; }
 .ov-verdict { border: 1px solid var(--pad-rule-strong); background: var(--pad-sheet); padding: 16px 18px; }
 .ov-verdict--alert { border: 2px solid var(--pad-red); background: var(--pad-red-tint); }
 .ov-verdict--ok { border: 2px solid var(--pad-green); background: var(--pad-green-tint); }
-.ov-stamp { display: inline-block; border: 2px solid currentColor; padding: 2px 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.ov-stamp { transform: rotate(-2deg); display: inline-block; border: 2px solid currentColor; padding: 2px 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .ov-verdict--alert .ov-stamp, .ov-verdict--alert .alert-title { color: var(--pad-red); }
 .ov-verdict--ok .ov-stamp, .ov-verdict--ok .alert-title { color: var(--pad-green); }
 .alert-title { margin-top: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--pad-ink); font-variant-numeric: tabular-nums; }
