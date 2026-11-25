@@ -8,7 +8,10 @@ from pathlib import Path
 import pymupdf
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import app
+import app  # noqa: E402
+
+SCENARIO_B = "Scenario B: Short-Delivery GPU Fraud ($2,000 Overcharge)"
+SCENARIO_C = "Scenario C: Clean 3-Way Match ($0.00 Variance)"
 
 
 def test_dynamic_edited_invoice_parsing():
@@ -41,6 +44,25 @@ def test_dynamic_edited_invoice_parsing():
     assert "DISCREPANCY DETECTED: $250.00 OVERCHARGE" in last[4]
     assert "INV-7711" in last[5]
     assert "PO #7711" in last[5]
+
+    # The Goods Receipt is what separates a 3-Way from a 2-Way match.
+    three_way = list(app.run_audit(SCENARIO_B, "3-Way Match"))[-1]
+    assert "DISCREPANCY DETECTED: $2,000.00 OVERCHARGE" in three_way[4]
+    assert "10000 - 8000 = 2000. Calculations mathematically verified." in three_way[3]
+    assert three_way[9]["payable"] == 8000.00
+    two_way = list(app.run_audit(SCENARIO_B, "2-Way Match"))[-1]
+    assert "CLEARED FOR PAYMENT" in two_way[4]
+
+    # Tax is applied to both sides in a 3-Way match, but the 4-Way tax document makes the delivery exempt.
+    taxed_three = list(app.run_audit(SCENARIO_C, "3-Way Match", apply_tax=True))[-1]
+    assert "CLEARED FOR PAYMENT" in taxed_three[4]
+    taxed_four = list(app.run_audit(SCENARIO_C, "4-Way Match (Tax Verification)", apply_tax=True))[-1]
+    assert "DISCREPANCY DETECTED: $120.00 OVERCHARGE" in taxed_four[4]
+
+    # A renamed fee is still caught: anything outside the PO schedule is non-billable.
+    renamed = custom_inv.replace("Rush Onboarding Fee", "Onboarding Retainer")
+    renamed_last = list(app.run_audit(app.DEFAULT_SCENARIO, "3-Way Match", po_text_input=custom_po, inv_text_input=renamed))[-1]
+    assert "TOTAL RECOVERED: $250.00" in renamed_last[1]
 
 
 def test_pdf_extraction_via_pymupdf():
@@ -89,7 +111,14 @@ def test_xai_chatbot_guardrail_and_exact_reply():
     refusal_hist, _ = app.chat_with_auditor("What is the capital of France?", [], ctx, po_text, inv_text)
     refusal = refusal_hist[-1]["content"].lower()
     assert "paris" not in refusal
-    assert any(w in refusal for w in ("audit", "invoice", "purchase order", "po", "3-way"))
+    assert "specialized financial auditor" in refusal
+
+    # Replies are grounded in the executed audit, not in Scenario A constants.
+    ctx_b = list(app.run_audit(SCENARIO_B, "3-Way Match"))[-1][9]
+    why_b, _ = app.chat_with_auditor("Why did you flag this?", [], ctx_b, "", "")
+    assert "2,000.00" in why_b[-1]["content"] and "8,000.00" in why_b[-1]["content"]
+    hypo_b, _ = app.chat_with_auditor("What if the invoice was $9,000 instead?", [], ctx_b, "", "")
+    assert "fail" in hypo_b[-1]["content"].lower()
 
 
 def test_chaos_mode_and_certificate_export():
@@ -97,7 +126,9 @@ def test_chaos_mode_and_certificate_export():
     last = steps[-1]
     assert "[VISION ALERT]" in last[3]
     assert "ov-vision-badge--alert" in last[8]
-    app.gr.Info = lambda *_a, **_kw: None
+    # A Vision hold must block settlement.
+    col_upd, *_ = app.open_upi_checkout(last[9])
+    assert col_upd["visible"] is False
     cert_path = app.export_audit_certificate(last[9])
     assert cert_path is not None and Path(cert_path).is_file()
 
@@ -115,6 +146,10 @@ def test_mega_update_modules():
     bbox_img_path = steps_b[-1][15]
     assert "[VISION XAI] Bounding box drawn over missing inventory." in logs_b
     assert bbox_img_path and Path(bbox_img_path).is_file()
+    assert Path(bbox_img_path).name.startswith(app.XAI_IMAGE_PREFIX)
+    # Re-running on the annotated image audits the clean scan, not a box drawn on a box.
+    rerun = list(app.run_audit(SCENARIO_B, "3-Way Match", gr_image=bbox_img_path))[-1]
+    assert "SHORT 8/10" in rerun[2]
 
     # 3. UPI QR Checkout & Simulate Payment Success
     col_upd, qr_upd, _fb, _st = app.open_upi_checkout(steps_a[-1][9])
@@ -130,3 +165,11 @@ def test_mega_update_modules():
     app.gr.Info = lambda msg: toasts.append(msg)
     app.send_dispute_to_vendor(steps_a[-1][5], steps_a[-1][9])
     assert any("Dispute sent. You just saved $100. At your current scale, this amounts to $120,000 saved this year." in t for t in toasts)
+
+    # 5. Nothing to dispute on a clean match; payment settles the verified payable, not a fixed $500.
+    clean = list(app.run_audit(SCENARIO_C, "3-Way Match"))[-1]
+    banner, _btn = app.send_dispute_to_vendor(clean[5], clean[9])
+    assert "NO DISPUTE REQUIRED" in banner
+    steps_b_ctx = steps_b[-1][9]
+    pay_b, _rows, _kpi = app.simulate_payment_success(steps_b_ctx)
+    assert "Payment of $8,000.00 successful." in pay_b

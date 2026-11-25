@@ -41,10 +41,11 @@ flowchart LR
 3. **`invoice_parser_node` (Dynamic Line-Item & Tax Parser):**
    - Extracts invoice IDs (`INV-...`), itemized charges, subtotals, and optional 10% tax calculations (`Apply 10% Tax Node`) from live edited text or uploaded PDFs.
 4. **`auditor_node` (Reconciliation & Dispute Engine):**
-   - Compares every invoice line item against contracted PO items and GR delivered counts (`reconcile_three_way`).
+   - Compares every invoice line item against contracted PO items and GR delivered counts (`reconcile_three_way`): the payable amount is the PO authorized amount minus the value of units the Goods Receipt did not verify.
+   - `2-Way Match` skips the GR (so short-shipments pass, which is the point of the comparison); `4-Way Match (Tax Verification)` adds `TAX-DOC-2024-8842` and disputes tax billed on the exempt delivery.
    - Flags uncontracted fees, rate inflation, and quantity shortages, drafts a legally grounded vendor dispute email, and writes an fsync'd JSONL audit record to `workspace/receipts/overlord_audit.jsonl`.
 5. **`supervisor_node` (Independent Verification Gate):**
-   - Independently verifies the Auditor's arithmetic (e.g., `[SUPERVISOR AGENT] 600 - 500 = 100. Calculations mathematically verified. Routing to Dispute.`) before unlocking downstream actions.
+   - Re-derives the variance from the invoice total, payable cap and flagged lines (e.g., `[SUPERVISOR AGENT] 600 - 500 = 100. Calculations mathematically verified. Routing to Dispute.`). If the Auditor's figure disagrees, it overrides it and routes to human review.
 
 ---
 
@@ -52,7 +53,7 @@ flowchart LR
 
 | Feature | Where in UI | What It Does |
 | :--- | :--- | :--- |
-| **Multi-Scenario Matrix** | Left Sidebar (`Demo Scenario`) | One-click presets: **Scenario A** (`$100` Unauthorized Setup Fee), **Scenario B** (`$2,000` Short-Delivery GPU Fraud), and **Scenario C** (`$0.00` Clean 3-Way Match). |
+| **Multi-Scenario Matrix** | Left Sidebar (`Demo Scenario`) | One-click presets: **Scenario A** (`$100` Unauthorized Setup Fee), **Scenario B** (10 GPUs ordered and billed, 8 delivered: `$2,000` short-delivery), and **Scenario C** (`$0.00` Clean 3-Way Match). Each preset loads its own dock-scan Goods Receipt image. |
 | **Audit Modes & Tax Hook** | Left Sidebar (`Audit Mode` / `Apply 10% Tax Node`) | Switch between `3-Way Match`, `2-Way Match`, and `4-Way Match (Tax Verification)` (`TAX-DOC-2024-8842`), plus a live 10% Tax Node checkbox. |
 | **Chaos Mode** | Left Sidebar (`Chaos Mode`) | Injects live adversarial Vision failures (`38.4%` confidence alert) mid-demo to prove the Vision pipeline isn't hardcoded. |
 | **Live PDF / Text Ingestion** | Cols 1 & 3 (`Edit / Upload PDF` tabs) | Upload custom `.pdf` or `.txt` Purchase Orders and Invoices (parsed via `pymupdf`) or edit amounts live and watch XAI diffing recompute. |
@@ -60,7 +61,7 @@ flowchart LR
 | **Vision XAI Bounding Box** | Col 2 (`02 / GOODS RECEIPT`) | Dynamically draws a red bounding box over empty manifest bays when units are missing (Scenario B). |
 | **Explainable AI Chatbot** | Bottom Left (`Chat with the Auditor`) | Context-injected `gr.Chatbot` powered by Gemini 3.5 Flash with grounded offline fallback, domain guardrails (politely rejects off-topic questions like *"What is the capital of France?"*), and 4 quick-ask buttons: **Why did you flag this?**, **Summarize Invoice**, **Draft Payment Approval**, and **What if the invoice was $450?**. |
 | **Send Dispute Kill Shot** | Bottom Right (`Send Dispute to Vendor`) | Dispatches the dispute email, displays `[SUCCESS] Dispute dispatched to vendor via API. Funds secured.`, logs to JSONL, and pops up an annualized scale ROI toast (`$120,000 saved this year` at 5,000 invoices/month). |
-| **UPI Checkout Gateway** | Bottom Right (`Proceed to Payment`) | Generates a live local QR code via `qrcode` for `upi://pay?pa=9458175464@yesfam&pn=ProjectOverlord&am=500.00&cu=INR` (with raw URI fallback textbox) and a **Simulate Payment Success** button that logs `PAID ($500.00)` to the ledger. |
+| **UPI Checkout Gateway** | Bottom Right (`Proceed to Payment`) | Generates a live QR code via `qrcode` for the verified payable amount (`upi://pay?pa=9458175464@yesfam&pn=ProjectOverlord&am=<payable>&cu=INR`, raw URI fallback textbox). Disputed amounts are withheld; a Chaos-Mode Vision hold blocks payment. **Simulate Payment Success** logs `PAID ($<payable>)` to the ledger. |
 | **Compliance Ledger & Export** | Tab 2 (`Compliance Ledger & Export`) | Live table backed by `workspace/receipts/overlord_audit.jsonl`, cumulative leakage KPI, and one-click JSON Audit Certificate export (`workspace/exports/OVL-CERT-*.json`). |
 | **CFO Boardroom** | Tab 3 (`CFO Boardroom`) | Bloomberg-terminal-styled ROI calculator with sliders for **Monthly Invoices Processed**, **Average Invoice Value ($)**, and **Error Rate (%)**. |
 | **Donut Challenge Hooks** | Bottom of `app.py` | Pre-built commented-out LangGraph nodes (`translate_dispute_email()`, `calculate_tax()`) ready for rapid live judging twists. |
@@ -82,6 +83,7 @@ ZeroTouch-AP-Auditor/
 ├── Dockerfile                 # Containerized deployment image
 ├── .github/workflows/ci.yml   # GitHub Actions CI (ruff lint, offline pytest, Docker smoke test)
 ├── tests/
+│   ├── conftest.py            # Forces offline mode and isolates the ledger per test
 │   └── test_overlord.py       # Automated test suite (dynamic parsing, PyMuPDF, XAI bot, Chaos, Mega modules)
 ├── workspace/
 │   ├── receipts/              # Immutable fsync'd JSONL audit trail (overlord_audit.jsonl)
@@ -104,6 +106,8 @@ Create `.env` from `.env.example` (`.env` is gitignored so keys are never commit
 | `GEMINI_PRO_MODEL` | `gemini-3.5-flash` | Model used for PO verification and XAI Auditor Chatbot. |
 | `GEMINI_VISION_MODEL` | `gemini-3.5-flash` | Multimodal model used for Goods Receipt image verification. |
 | `GEMINI_FALLBACK_MODEL` | `gemini-3.1-flash-lite` | Automatic fallback model if the primary model errors or is unavailable. |
+
+With live Gemini on, the Vision Agent asks for a JSON unit count and a `box_2d` around the missing stock and uses both. Offline, it uses the preset's signed receiving-manifest count (a custom PO is assumed fully delivered) and logs `[FALLBACK]` in telemetry.
 | `GRADIO_SERVER_PORT` | `7860` | Web server port. |
 | `GRADIO_ANALYTICS_ENABLED` | `False` | Disables Gradio telemetry in CI/local demos. |
 
@@ -156,6 +160,7 @@ ruff check .
 ---
 
 ## 8. Additional Project Assets
-- **3-Minute Live Pitch Script:** [DEMO_SCRIPT.md](file:///c:/Users/Lenovo/Desktop/folderAp/ZeroTouch-AP-Auditor/DEMO_SCRIPT.md)
-- **4-Slide Pitch Deck Spec:** [PITCH_DECK.md](file:///c:/Users/Lenovo/Desktop/folderAp/ZeroTouch-AP-Auditor/PITCH_DECK.md)
-- **Hackathon Portal Submission Copy:** [SUBMISSION.md](file:///c:/Users/Lenovo/Desktop/folderAp/ZeroTouch-AP-Auditor/SUBMISSION.md)
+- **3-Minute Live Pitch Script:** [DEMO_SCRIPT.md](DEMO_SCRIPT.md)
+- **4-Slide Pitch Deck Spec:** [PITCH_DECK.md](PITCH_DECK.md)
+- **Hackathon Portal Submission Copy:** [SUBMISSION.md](SUBMISSION.md)
+- **Pitch Prep & Script (PDF):** [Project_Overlord_Pitch_Prep_and_Script.pdf](Project_Overlord_Pitch_Prep_and_Script.pdf)

@@ -28,7 +28,7 @@
 - **Layout:** Top tech-stack pill bar, center 5-node horizontal LangGraph pipeline diagram (`#12141A` cards connected by `#10B981` glowing arrows), bottom full-width Output Banner.
 - **Headline:** Zero-Touch Orchestration
 - **The Tech Stack (JetBrains Mono Pill Strip):**
-  `LangGraph (Multi-Agent State Machine)` + `Gemini 1.5 Pro (Long-context)` + `Gemini Vision (Multimodal)` + `Gradio (Obsidian Dark-Mode UI)`
+  `LangGraph (5-Node State Machine)` + `Gemini 3.5 Flash` + `Gemini Vision (Multimodal)` + `Gyansutr RAG` + `Gradio (Obsidian Dark-Mode UI)`
 - **The 5-Agent Swarm:**
   1. **PO Parser:** Extracts authorized rates and quantities.
   2. **Vision Agent:** Physically verifies the Goods Receipt image.
