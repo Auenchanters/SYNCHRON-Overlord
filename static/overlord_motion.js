@@ -423,6 +423,8 @@ function setTheme(dark, origin) {
 document.addEventListener("click", (e) => {
   const toggle = e.target.closest?.("#ov-theme-toggle");
   if (toggle) setTheme(!isDark(), toggle);
+  // The run button's attention ring has done its job once the user finds it.
+  if (e.target.closest?.(".ov-run-hint")) document.documentElement.classList.add("ov-has-run");
 });
 
 startIntro();

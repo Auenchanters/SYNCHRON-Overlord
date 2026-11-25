@@ -1676,6 +1676,7 @@ footer { display: none !important; }
 .ov-sidebar-brand .sub { font-size: 13.5px; color: var(--pad-ink-2); margin-top: 2px; }
 .ov-sidebar-steps { margin: 4px 0 0; padding: 0 0 0 18px; color: var(--pad-ink-2); font-size: 13.5px; line-height: 1.55; }
 .ov-sidebar-steps li { margin: 2px 0; }
+.ov-sidebar .ov-section-label { margin-top: 10px; }
 .ov-sidebar-steps strong { color: var(--pad-ink); font-weight: 600; }
 
 .ov-status-stack { display: grid; gap: 4px; font-size: 13px; color: var(--pad-ink-2); }
@@ -1804,10 +1805,38 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 .ov-cfo-roi-card h2 { font-size: 24px !important; letter-spacing: -0.01em; }
 .ov-cfo-roi-card code { font-family: var(--pad-sans) !important; background: transparent !important; color: var(--pad-ink) !important; font-weight: 600; font-variant-numeric: tabular-nums; }
 
+
+/* Run bar: the primary action, full width under the header */
+.ov-runbar {
+    background: var(--pad-sheet) !important; border: 2px solid var(--pad-ink) !important; border-radius: 4px !important;
+    padding: 14px 16px !important; gap: 16px !important; align-items: flex-end !important;
+}
+.ov-runbar > .ov-run-col { background: transparent !important; border: none !important; }
+.ov-run-col { gap: 6px !important; justify-content: flex-end !important; }
+.ov-run-col .ov-exec-btn, .ov-run-col .ov-exec-btn button { min-height: 56px !important; font-size: 17px !important; width: 100%; }
+.ov-run-help { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--pad-ink); }
+.ov-run-help span { font-weight: 400; color: var(--pad-ink-2); }
+/* Until the first run, a slow ring marks the button as the place to start. */
+@keyframes ov-ring {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pad-green) 45%, transparent); }
+    70%, 100% { box-shadow: 0 0 0 12px transparent; }
+}
+html:not(.ov-has-run) .ov-run-hint:not(:disabled) { animation: ov-ring 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+
+/* Document row: three columns with the same tab row, top line and minimum height */
+.ov-docs-row .ov-doc-shell, .ov-gr-card { min-height: 380px; }
+.ov-gr-card {
+    gap: 0 !important; background: var(--pad-sheet) !important; border: 1px solid var(--pad-rule-strong) !important;
+    border-radius: 4px !important; overflow: hidden; padding: 0 !important;
+}
+.ov-gr-card > * { border-radius: 0 !important; }
+.ov-gr-card .ov-gr-image { border: none !important; border-top: 1px solid var(--pad-rule) !important; border-bottom: 1px solid var(--pad-rule) !important; }
+.ov-gr-card .ov-vision-badge { border: none; }
+
 /* Narrow screens: the sidebar becomes a top section, documents stack */
 @media (max-width: 1100px) {
-    .ov-shell { flex-direction: column !important; }
-    .ov-sidebar { position: static; height: auto; border-right: none !important; border-bottom: 1px solid var(--pad-rule) !important; }
+    .ov-shell { flex-direction: column-reverse !important; }  /* workspace and run bar first on phones */
+    .ov-sidebar { position: static; height: auto; border-right: none !important; border-top: 1px solid var(--pad-rule) !important; }
     .ov-main { padding: 18px 16px 32px !important; }
     .overlord-row { flex-direction: column !important; }
     .ov-topbar { flex-direction: column; align-items: flex-start; }
@@ -2003,7 +2032,7 @@ def render_vision_badge_html(confidence: str = "", detail: str = "Not inspected 
 
 def render_findings_html(state: str = "idle", variance: float = 100.0, reason: str = "", chaos_triggered: bool = False) -> str:
     if state == "idle":
-        return '<div class="ov-verdict findings-idle">No verdict yet. Choose a case on the left, then press <strong>Execute 3-Way Match</strong>.</div>'
+        return '<div class="ov-verdict findings-idle">No verdict yet. Choose a case in the bar at the top, then press <strong>Execute 3-Way Match</strong>.</div>'
     if state == "scanning":
         return '<div class="ov-verdict findings-idle">Checking the three documents against each other…</div>'
     if not chaos_triggered and variance <= 0:
@@ -2251,23 +2280,15 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                 '<div class="ov-sidebar-brand"><div class="title">Project Overlord</div>'
                 '<div class="sub">Financial defense engine · Track PS-BA1</div></div>'
                 '<ol class="ov-sidebar-steps">'
-                "<li><strong>Pick a case</strong> or edit the documents.</li>"
-                "<li><strong>Run the check.</strong> Five agents compare all three documents.</li>"
+                "<li><strong>Pick a case</strong> in the bar at the top, or edit the documents.</li>"
+                "<li><strong>Press Execute 3-Way Match.</strong> Five agents compare all three documents.</li>"
                 "<li><strong>Read the verdict</strong>, then dispute or pay.</li>"
                 "</ol>"
-            )
-            scenario_selector = gr.Dropdown(label="Case", choices=list(SCENARIOS.keys()), value=DEFAULT_SCENARIO, interactive=True)
-            audit_mode = gr.Dropdown(
-                label="Check type",
-                choices=["3-Way Match", "2-Way Match", "4-Way Match (Tax Verification)"],
-                value="3-Way Match",
-                interactive=True,
-                info="2-way skips the goods receipt; 4-way adds the tax document.",
+                '<div class="ov-section-label">Test options</div>'
             )
             apply_tax_toggle = gr.Checkbox(label="Add 10% sales tax", value=False, info="Applies tax to the invoice and the authorized amount.")
             with gr.Column(elem_classes=["ov-chaos-wrap"]):
                 chaos_mode = gr.Checkbox(label="Chaos Mode", value=False, info="Feeds the Vision agent a tampered receipt to prove nothing is hardcoded.")
-            run_btn = gr.Button("Execute 3-Way Match", variant="primary", elem_classes=["ov-exec-btn"])
             gr.HTML(
                 '<div class="ov-status-stack">'
                 + (
@@ -2285,9 +2306,25 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
 
         with gr.Column(scale=5, elem_classes=["ov-main"]):
             topbar_html = gr.HTML(value=render_topbar_html(recovered_amount=0.0, flash=False))
+
+            # The run bar: the one primary action, placed where the eye lands first.
+            with gr.Row(elem_classes=["ov-runbar"], equal_height=True):
+                scenario_selector = gr.Dropdown(label="Case to check", choices=list(SCENARIOS.keys()), value=DEFAULT_SCENARIO, interactive=True, scale=3)
+                audit_mode = gr.Dropdown(
+                    label="Check type",
+                    choices=["3-Way Match", "2-Way Match", "4-Way Match (Tax Verification)"],
+                    value="3-Way Match",
+                    interactive=True,
+                    info="2-way skips the goods receipt; 4-way adds tax.",
+                    scale=2,
+                )
+                with gr.Column(scale=2, min_width=260, elem_classes=["ov-run-col"]):
+                    gr.HTML('<p class="ov-run-help">Run the check <span>· about 2 seconds</span></p>')
+                    run_btn = gr.Button("Execute 3-Way Match", variant="primary", size="lg", elem_classes=["ov-exec-btn", "ov-run-hint"])
+
             metrics_bar_html = gr.HTML(value=render_metrics_bar_html())
 
-            with gr.Row(elem_classes=["overlord-row"]):
+            with gr.Row(elem_classes=["overlord-row", "ov-docs-row"]):
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
                     with gr.Tabs():
                         with gr.Tab("Review"):
@@ -2297,22 +2334,25 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                             po_text_box = gr.Textbox(label="Purchase order text", value=SCENARIOS[DEFAULT_SCENARIO]["po_text"], lines=11, elem_classes=["ov-doc-editor"])
 
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
-                    gr.HTML(
-                        '<div class="ov-doc-shell"><div class="ov-doc-header">'
-                        '<span class="ov-doc-title">Goods receipt<span class="ov-doc-purpose">What actually arrived at the dock</span></span>'
-                        '<span class="ov-pill">Photo or scan</span></div></div>'
-                    )
-                    gr_image = gr.Image(
-                        value=DEFAULT_GR_IMAGE_PATH,
-                        label="Goods receipt image",
-                        show_label=False,
-                        sources=["upload", "clipboard"],
-                        type="filepath",
-                        height=240,
-                        buttons=["fullscreen"],
-                        elem_classes=["ov-gr-image"],
-                    )
-                    vision_badge_html = gr.HTML(value=render_vision_badge_html())
+                    with gr.Tabs():
+                        with gr.Tab("Review"):
+                            with gr.Column(elem_classes=["ov-gr-card"]):
+                                gr.HTML(
+                                    '<div class="ov-doc-header">'
+                                    '<span class="ov-doc-title">Goods receipt<span class="ov-doc-purpose">What actually arrived at the dock</span></span>'
+                                    '<span class="ov-pill">Drop a photo to replace</span></div>'
+                                )
+                                gr_image = gr.Image(
+                                    value=DEFAULT_GR_IMAGE_PATH,
+                                    label="Goods receipt image",
+                                    show_label=False,
+                                    sources=["upload", "clipboard"],
+                                    type="filepath",
+                                    height=220,
+                                    buttons=["fullscreen"],
+                                    elem_classes=["ov-gr-image"],
+                                )
+                                vision_badge_html = gr.HTML(value=render_vision_badge_html())
 
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
                     with gr.Tabs():
