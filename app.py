@@ -179,11 +179,16 @@ AUDIT_RECEIPTS_PATH = os.path.join(WORKSPACE_DIR, "receipts", "overlord_audit.js
 CERT_EXPORT_DIR = os.path.join(WORKSPACE_DIR, "exports")
 
 
-def extract_uploaded_document_text(file_path: str | None) -> str:
-    """Read real text from an uploaded PDF (via PyMuPDF) or plain-text file."""
+IMAGE_DOC_TYPES = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
+
+
+def extract_uploaded_document_text(file_path: str | None, kind: str = "invoice") -> str:
+    """Read real text from an uploaded PDF (via PyMuPDF), plain-text file, or photo (via the vision model)."""
     if not file_path or not os.path.isfile(file_path):
         return ""
     ext = Path(file_path).suffix.lower()
+    if ext in IMAGE_DOC_TYPES:
+        return transcribe_document_image(file_path, kind)
     if ext == ".pdf":
         try:
             import pymupdf  # type: ignore
@@ -198,6 +203,71 @@ def extract_uploaded_document_text(file_path: str | None) -> str:
         return Path(file_path).read_text(encoding="utf-8", errors="replace")
     except Exception:
         return ""
+
+
+def _money(v: Any) -> float:
+    try:
+        return round(float(str(v).replace(",", "").replace("$", "").strip()), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def format_document_text(data: dict[str, Any], kind: str) -> str:
+    """Write model-extracted fields in the same layout as the preset documents, so the regular parsers read them."""
+    lines = []
+    for i, ln in enumerate(data.get("lines") or [], start=1):
+        if not isinstance(ln, dict):
+            continue
+        desc = re.sub(r"\s+", " ", str(ln.get("description") or "Item")).strip(" .")[:70]
+        try:
+            qty = max(int(float(ln.get("qty") or 1)), 1)
+        except (TypeError, ValueError):
+            qty = 1
+        lines.append(f"  {i:02d}. {qty}x {desc} ........ ${_money(ln.get('amount')):,.2f}")
+    if not lines:
+        return ""
+    vendor = str(data.get("vendor") or "Unknown vendor").strip()
+    number = re.sub(r"[^A-Za-z0-9\-]", "", str(data.get("number") or "")) or datetime.now().strftime("%H%M%S")
+    line_sum = round(sum(_money(ln.get("amount")) for ln in data["lines"] if isinstance(ln, dict)), 2)
+    tax = _money(data.get("tax"))
+    total = _money(data.get("total")) or round(line_sum + tax, 2)
+    if kind == "po":
+        po_id = number if number.upper().startswith("PO") else f"PO #{number}"
+        return (
+            "PURCHASE ORDER (transcribed from a photo)\n"
+            f"PURCHASE ORDER NO.: {po_id}\nVENDOR: {vendor}\n\nAUTHORIZED LINE ITEMS\n" + "\n".join(lines) +
+            f"\n  MAXIMUM AUTHORIZED AMOUNT: ${total:,.2f}\n\nNON-BILLABLE EXTRAS CLAUSE\n"
+            "  Charges not listed above are non-billable without a signed change order."
+        )
+    inv_id = number if number.upper().startswith("INV") else f"INV-{number}"
+    po_ref = str(data.get("po_ref") or "").strip()
+    out = f"VENDOR INVOICE — {vendor} (transcribed from a photo)\nINVOICE NO.: {inv_id}"
+    out += f" | PO REF: {po_ref}" if po_ref else ""
+    out += "\n\nLINE ITEMS:\n" + "\n".join(lines)
+    if tax:
+        out += f"\n  SALES TAX: ${tax:,.2f}"
+    return out + f"\n----------------------------------------------------------------\nTOTAL DUE: ${total:,.2f}"
+
+
+def transcribe_document_image(file_path: str, kind: str = "invoice") -> str:
+    """Read a photographed, scanned or handwritten PO / invoice (a restaurant bill works too) with the vision model."""
+    b64, _ = preprocess_gr_image(file_path)
+    if not b64:
+        return ""
+    label = "purchase order" if kind == "po" else "invoice or bill"
+    raw = _call_llm_safe(
+        f"Read this {label}. It may be printed, handwritten, a phone photo, or a restaurant or shop bill. "
+        'Reply with JSON only: {"number": "<document number or null>", "po_ref": "<purchase order number it references, or null>", '
+        '"vendor": "<seller or restaurant name, or null>", "lines": [{"qty": <integer>, "description": "<item>", '
+        '"amount": <line total as a number>}], "tax": <government tax as a number, 0 if none>, "total": <grand total as a number, or null>}. '
+        "List service charges, delivery and other fees as their own lines. Copy only what is written; never invent lines "
+        "or prices. Leave out subtotals, tips and change given.",
+        image_bytes=base64.b64decode(b64),
+        json_mode=True,
+        max_wait_s=float(os.getenv("OVERLORD_TRANSCRIBE_TIMEOUT", "30")),
+    )
+    data = _parse_json_reply(raw)
+    return format_document_text(data, kind) if data else ""
 
 
 def log_audit_receipt(record: dict[str, Any]) -> dict[str, Any]:
@@ -541,7 +611,16 @@ def reconcile_three_way(
     variance = round(max(inv_amt - payable_cap, line_excess, 0.0), 2)
     chaos_triggered = bool(gr_data.get("chaos_triggered", False))
 
-    if not flagged_items and variance > 0 and annotated_inv_items:
+    unitemized = round(inv_amt - sum(float(i["amount"]) for i in inv_items) - tax_billed, 2)
+    if not flagged_items and variance > 0 and unitemized > 0:
+        # The total carries money no line explains (a service charge, tax or fee written under the items).
+        flagged_items.append({
+            "description": "Charges outside the itemised lines",
+            "amount": unitemized,
+            "excess": min(unitemized, variance),
+            "reason": f"Total includes ${unitemized:,.2f} not itemised on the invoice (tax, service charge or fees)",
+        })
+    elif not flagged_items and variance > 0 and annotated_inv_items:
         annotated_inv_items[-1]["flagged"] = True
         flagged_items.append({
             "description": annotated_inv_items[-1]["description"],
@@ -729,17 +808,61 @@ def _log(msg: str) -> str:
     return f"[{_ts()}] {msg}"
 
 
+GEMMA_MODEL = os.getenv("GEMMA_MODEL", "google/gemma-4-26B-A4B-it")
+
+
+def _hf_token() -> str:
+    return (os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN") or "").strip()
+
+
+def _gemini_key() -> str:
+    return (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
+
+
+def llm_backend() -> str | None:
+    """Which model answers: "gemma" (Gemma 4 on Hugging Face Inference Providers), "gemini", or None (offline engine).
+
+    Gemma is preferred whenever an HF token is present; OVERLORD_LLM_PROVIDER=gemini forces Gemini when both exist.
+    """
+    if os.getenv("OVERLORD_LIVE_LLM", "1") != "1":
+        return None
+    if os.getenv("OVERLORD_LLM_PROVIDER", "").lower() == "gemini" and _gemini_key():
+        return "gemini"
+    if _hf_token():
+        return "gemma"
+    return "gemini" if _gemini_key() else None
+
+
+def llm_label() -> str:
+    return {"gemma": "Gemma 4", "gemini": "Gemini"}.get(llm_backend() or "", "offline engine")
+
+
 def _build_genai_client() -> genai.Client | None:
-    api_key = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
-    if os.getenv("OVERLORD_LIVE_LLM", "1") != "1" or not api_key:
+    if llm_backend() != "gemini":
         return None
     try:
-        return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
+        return genai.Client(api_key=_gemini_key(), http_options=types.HttpOptions(timeout=12000))
     except Exception:
         return None
 
 
-def _call_gemini_safe(
+def _invoke_gemma(prompt: str, image_bytes: bytes | None, system_instruction: str | None, max_wait_s: float) -> str | None:
+    """One chat-completion call to Gemma 4 through the Hugging Face router (OpenAI-compatible, provider auto-selected)."""
+    from huggingface_hub import InferenceClient
+
+    content: Any = prompt
+    if image_bytes:
+        data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
+        content = [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": data_url}}]
+    messages = ([{"role": "system", "content": system_instruction}] if system_instruction else []) + [
+        {"role": "user", "content": content}
+    ]
+    client = InferenceClient(provider=os.getenv("HF_PROVIDER", "auto"), api_key=_hf_token(), timeout=max_wait_s)
+    resp = client.chat_completion(model=GEMMA_MODEL, messages=messages, temperature=0.1, max_tokens=900)
+    return (resp.choices[0].message.content or "").strip() or None
+
+
+def _call_llm_safe(
     prompt: str,
     *,
     image_bytes: bytes | None = None,
@@ -748,46 +871,46 @@ def _call_gemini_safe(
     max_wait_s: float = 6.0,
     json_mode: bool = False,
 ) -> str | None:
-    """Call Gemini via google-genai SDK with a hard wall-clock cap; never stalls stage UI."""
-    client = _build_genai_client()
-    if client is None:
+    """Call the live model (Gemma 4 or Gemini) with a hard wall-clock cap; None means use the offline engine."""
+    backend = llm_backend()
+    if backend is None:
         return None
-    primary = model_name or os.getenv("GEMINI_PRO_MODEL", "gemini-3.5-flash").strip()
-    fallback = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite").strip()
 
-    contents: Any = prompt
-    if image_bytes:
-        contents = [
-            prompt,
-            types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-        ]
-
-    config = (
-        types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.1,
-            response_mime_type="application/json" if json_mode else None,
-        )
-        if (system_instruction or json_mode)
-        else None
-    )
-
-    def _invoke() -> str | None:
-        for candidate in (primary, fallback):
-            if not candidate:
-                continue
+    if backend == "gemma":
+        def _invoke() -> str | None:
             try:
-                resp = client.models.generate_content(
-                    model=candidate,
-                    contents=contents,
-                    config=config,
-                )
-                text = (getattr(resp, "text", None) or "").strip()
-                if text:
-                    return text
+                return _invoke_gemma(prompt, image_bytes, system_instruction, max_wait_s)
             except Exception:
-                continue
-        return None
+                return None
+    else:
+        client = _build_genai_client()
+        if client is None:
+            return None
+        primary = model_name or os.getenv("GEMINI_PRO_MODEL", "gemini-3.5-flash").strip()
+        fallback = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite").strip()
+        contents: Any = [prompt, types.Part.from_bytes(data=image_bytes, mime_type="image/png")] if image_bytes else prompt
+        config = (
+            types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.1,
+                response_mime_type="application/json" if json_mode else None,
+            )
+            if (system_instruction or json_mode)
+            else None
+        )
+
+        def _invoke() -> str | None:
+            for candidate in (primary, fallback):
+                if not candidate:
+                    continue
+                try:
+                    resp = client.models.generate_content(model=candidate, contents=contents, config=config)
+                    text = (getattr(resp, "text", None) or "").strip()
+                    if text:
+                        return text
+                except Exception:
+                    continue
+            return None
 
     pool = ThreadPoolExecutor(max_workers=1)
     future = pool.submit(_invoke)
@@ -799,33 +922,47 @@ def _call_gemini_safe(
         pool.shutdown(wait=False, cancel_futures=True)
 
 
+def _parse_json_reply(raw: str | None) -> dict[str, Any] | None:
+    """Models wrap JSON in prose or code fences; take the outermost {...} object."""
+    if not raw:
+        return None
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = json.loads(raw[start : end + 1])
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def gemini_vision_inspect(image_bytes: bytes | None, item: str, ordered: int) -> dict[str, Any] | None:
-    """Ask Gemini Vision to count delivered units; returns parsed JSON or None (offline / bad reply)."""
+    """Ask the vision model (Gemma 4 or Gemini) to count delivered units; returns parsed JSON or None (offline / bad reply)."""
     if not image_bytes:
         return None
-    raw = _call_gemini_safe(
+    raw = _call_llm_safe(
         f"You are a warehouse receiving inspector. The purchase order expects {ordered}x {item}. "
-        "Count the units visibly delivered in this Goods Receipt image. Reply with JSON only: "
+        "Count the units visibly delivered in this Goods Receipt image. It may be a photo, a scan, a handwritten "
+        "receiving note or a sketch: count what it shows or states was received. Reply with JSON only: "
         '{"delivered_qty": <int>, "summary": "<max 12 words>", "confidence": <0..1>, '
         '"missing_box_2d": [ymin, xmin, ymax, xmax] normalized 0-1000 around the empty/missing area, or null}',
         image_bytes=image_bytes,
         model_name=os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash"),
         json_mode=True,
+        max_wait_s=float(os.getenv("OVERLORD_VISION_TIMEOUT", "15")),
     )
-    if not raw:
-        return None
+    data = _parse_json_reply(raw)
     try:
-        data = json.loads(raw.strip().removeprefix("```json").removesuffix("```").strip())
-        data["delivered_qty"] = int(data["delivered_qty"])
+        data["delivered_qty"] = int(data["delivered_qty"])  # type: ignore[index]
         return data
-    except (ValueError, KeyError, TypeError):
+    except (KeyError, TypeError, ValueError):
         return None
 
 
 def po_parser_node(state: OverlordState) -> dict[str, Any]:
     """Node 1 (PO Parser): Real text/PDF parsing + Gyansutr RAG clause indexing + Gemini verification."""
     po_data = parse_po_document(state.get("po_text", ""))
-    gemini_note = _call_gemini_safe(
+    gemini_note = _call_llm_safe(
         "In 1 short sentence, state the PO number, authorized amount and any clause restricting extra "
         f"charges or undelivered units, from:\n{state.get('po_text', '')[:1500]}",
         model_name=os.getenv("GEMINI_PRO_MODEL", "gemini-3.5-flash"),
@@ -845,7 +982,7 @@ def po_parser_node(state: OverlordState) -> dict[str, Any]:
         ),
     ]
     if gemini_note:
-        logs.append(_log(f"[GEMINI CLAUSE CHECK] {gemini_note[:160]}"))
+        logs.append(_log(f"[{llm_label().upper()} CLAUSE CHECK] {gemini_note[:160]}"))
     return {"po_data": po_data, "step_logs": logs, "logs": logs}
 
 
@@ -861,7 +998,7 @@ def vision_agent_node(state: OverlordState) -> dict[str, Any]:
 
     b64, dim_label = preprocess_gr_image(img_path)
     img_bytes = base64.b64decode(b64) if b64 else None
-    vision_model = os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash")
+    vision_model = GEMMA_MODEL if llm_backend() == "gemma" else os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash")
 
     po_lines = (state.get("po_data") or {}).get("line_items") or []
     gr_line = primary_goods_line(po_lines) or {"description": sc["gr_item"], "qty": sc["gr_expected_qty"]}
@@ -900,18 +1037,21 @@ def vision_agent_node(state: OverlordState) -> dict[str, Any]:
         except (TypeError, ValueError):
             confidence = "95.0%"
         box_2d = vision.get("missing_box_2d")
+        # Gemma may return one box per missing unit; draw one box around all of them.
+        if isinstance(box_2d, list) and box_2d and all(isinstance(b, list) and len(b) == 4 for b in box_2d):
+            box_2d = [min(b[0] for b in box_2d), min(b[1] for b in box_2d), max(b[2] for b in box_2d), max(b[3] for b in box_2d)]
         if isinstance(box_2d, list) and len(box_2d) == 4 and img_bytes:
             with Image.open(img_path) as im:
                 w, h = im.size
             ymin, xmin, ymax, xmax = (float(v) / 1000.0 for v in box_2d)
             box = [int(xmin * w), int(ymin * h), int(xmax * w), int(ymax * h)]
         if vision.get("summary"):
-            logs.append(_log(f"[GEMINI VISION] {str(vision['summary'])[:120]}"))
+            logs.append(_log(f"[{llm_label().upper()} VISION] {str(vision['summary'])[:120]}"))
     else:
         # Offline: trust the signed receiving manifest for the preset scan; a custom PO assumes full delivery.
         delivered = int(sc["gr_delivered_qty"]) if ordered == int(sc["gr_expected_qty"]) else ordered
         confidence = "99.4%"
-        logs.append(_log("[FALLBACK] Gemini Vision offline -> signed receiving-manifest count used."))
+        logs.append(_log("[FALLBACK] Vision model offline -> signed receiving-manifest count used."))
 
     missing = ordered - delivered
     summary = (
@@ -1328,7 +1468,7 @@ def chat_with_auditor(
 
     reply: str | None = None
     try:
-        reply = _call_gemini_safe(
+        reply = _call_llm_safe(
             prompt,
             system_instruction=system_prompt,
             model_name=os.getenv("GEMINI_PRO_MODEL", "gemini-3.5-flash"),
@@ -1521,8 +1661,9 @@ OVERLORD_HEAD = """
 
 # Motion layer: landing page + dust transition (three.js) and dashboard motion (GSAP), all vendored in static/.
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+SAMPLES_DIR = Path(BASE_DIR, "samples")
 mimetypes.add_type("text/javascript", ".js")  # Windows can map .js to text/plain, which browsers refuse for modules
-gr.set_static_paths(paths=[STATIC_DIR])
+gr.set_static_paths(paths=[STATIC_DIR, str(SAMPLES_DIR)])
 _MOTION_JS = Path(STATIC_DIR, "overlord_motion.js")
 # ?v= busts browser caches whenever the script changes.
 MOTION_SCRIPT_URL = f"/gradio_api/file={quote(_MOTION_JS.as_posix(), safe='/:')}?v={int(_MOTION_JS.stat().st_mtime)}"
@@ -1976,7 +2117,7 @@ def render_metrics_bar_html(
       </tr>
       <tr>
         <td class="sub">Purchase order cap</td>
-        <td class="sub">Goods receipt, checked by Gemini Vision</td>
+        <td class="sub">Goods receipt, checked by the vision model</td>
         <td class="sub">Vendor invoice total</td>
         <td class="sub">Billed minus payable, verified by the Supervisor</td>
       </tr>
@@ -2366,7 +2507,7 @@ def run_audit(
 with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=True) as demo:
     audit_context_state = gr.State({"executed": False})
     init_rows, _ = build_ledger_rows_and_total()
-    _live = _build_genai_client() is not None
+    _live = llm_backend() is not None
 
     with gr.Row(elem_classes=["ov-shell"]):
         with gr.Column(scale=1, min_width=280, elem_classes=["ov-sidebar"]):
@@ -2386,9 +2527,9 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
             gr.HTML(
                 '<div class="ov-status-stack">'
                 + (
-                    '<div class="ov-status-line"><span class="ov-dot"></span>Gemini connected</div>'
+                    f'<div class="ov-status-line"><span class="ov-dot"></span>{llm_label()} connected</div>'
                     if _live
-                    else '<div class="ov-status-line"><span class="ov-dot ov-dot--amber"></span>Gemini offline: deterministic engine in use</div>'
+                    else '<div class="ov-status-line"><span class="ov-dot ov-dot--amber"></span>No model key: deterministic engine in use</div>'
                 )
                 + '<div class="ov-status-line"><span class="ov-dot"></span>Clause search ready</div>'
                 "</div>"
@@ -2424,7 +2565,8 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                         with gr.Tab("Review"):
                             po_html = gr.HTML(value=render_po_html_from_text(SCENARIOS[DEFAULT_SCENARIO]["po_text"], highlight=False))
                         with gr.Tab("Edit / Upload PDF"):
-                            po_upload = gr.File(label="Upload a purchase order (.pdf or .txt)", file_types=[".pdf", ".txt"], type="filepath")
+                            po_upload = gr.File(label="Upload a purchase order (PDF, text or photo)", file_types=[".pdf", ".txt", *IMAGE_DOC_TYPES], type="filepath")
+                            po_photo = gr.Image(label="Or take a photo (handwritten is fine)", sources=["webcam", "clipboard"], type="filepath", height=160)
                             po_text_box = gr.Textbox(label="Purchase order text", value=SCENARIOS[DEFAULT_SCENARIO]["po_text"], lines=11, elem_classes=["ov-doc-editor"])
 
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
@@ -2440,7 +2582,7 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                                     value=DEFAULT_GR_IMAGE_PATH,
                                     label="Goods receipt image",
                                     show_label=False,
-                                    sources=["upload", "clipboard"],
+                                    sources=["upload", "webcam", "clipboard"],
                                     type="filepath",
                                     height=220,
                                     buttons=["fullscreen"],
@@ -2453,8 +2595,24 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                         with gr.Tab("Review"):
                             invoice_html = gr.HTML(value=render_invoice_html_from_text(SCENARIOS[DEFAULT_SCENARIO]["inv_text"], "3-Way Match", flagged=False))
                         with gr.Tab("Edit / Upload PDF"):
-                            inv_upload = gr.File(label="Upload a vendor invoice (.pdf or .txt)", file_types=[".pdf", ".txt"], type="filepath")
+                            inv_upload = gr.File(label="Upload a vendor invoice (PDF, text or photo of any bill)", file_types=[".pdf", ".txt", *IMAGE_DOC_TYPES], type="filepath")
+                            inv_photo = gr.Image(label="Or take a photo (a restaurant bill works)", sources=["webcam", "clipboard"], type="filepath", height=160)
                             inv_text_box = gr.Textbox(label="Vendor invoice text", value=SCENARIOS[DEFAULT_SCENARIO]["inv_text"], lines=11, elem_classes=["ov-doc-editor"])
+
+            # Phone-photo samples (handwritten POs, a restaurant bill, receiving notes, real CORD-v2 receipts) for live demos.
+            with gr.Accordion("Sample photos: handwritten POs, a restaurant bill, real receipts", open=False, elem_classes=["ov-samples"]):
+                gr.Markdown(
+                    "Click a photo to load it. Purchase orders and bills are read by the vision model (Gemma 4) into the editors; "
+                    "receiving notes replace the goods-receipt scan. Then press **Execute 3-Way Match**."
+                )
+                with gr.Row():
+                    gr.Examples(examples=[[str(f)] for f in sorted(SAMPLES_DIR.glob("synthetic/*_po_*.jpg"))], inputs=[po_photo], label="Purchase orders")
+                    gr.Examples(
+                        examples=[[str(f)] for f in [*sorted(SAMPLES_DIR.glob("synthetic/*_bill_*.jpg")), *sorted(SAMPLES_DIR.glob("synthetic/*_invoice_*.jpg")), *sorted(SAMPLES_DIR.glob("real/*.jpg"))]],
+                        inputs=[inv_photo],
+                        label="Bills and invoices",
+                    )
+                    gr.Examples(examples=[[str(f)] for f in sorted(SAMPLES_DIR.glob("synthetic/*_receipt_note_*.jpg"))], inputs=[gr_image], label="Receiving notes")
 
             with gr.Tabs():
                 with gr.Tab("Act on the verdict"):
@@ -2559,11 +2717,17 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
             gr.update(visible=False),
         )
 
-    def _on_upload(file_path: str | None, fallback_text: str):
+    def _on_upload(file_path: str | None, fallback_text: str, kind: str = "invoice"):
         """Clearing the upload keeps whatever is in the editor instead of wiping it."""
         if not file_path:
             return gr.update()
-        return extract_uploaded_document_text(file_path) or fallback_text
+        text = extract_uploaded_document_text(file_path, kind)
+        if not text and Path(file_path).suffix.lower() in IMAGE_DOC_TYPES:
+            gr.Warning(
+                "Couldn't read that photo. Reading photos needs the vision model (set HF_TOKEN for Gemma 4); "
+                "the previous text is kept."
+            )
+        return text or fallback_text
 
     scenario_selector.change(
         fn=_on_scenario_change,
@@ -2575,8 +2739,10 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
         ],
     )
     # Editors re-render the diff views through their own .change handlers below.
-    po_upload.change(fn=_on_upload, inputs=[po_upload, po_text_box], outputs=[po_text_box])
-    inv_upload.change(fn=_on_upload, inputs=[inv_upload, inv_text_box], outputs=[inv_text_box])
+    po_upload.change(fn=lambda f, t: _on_upload(f, t, "po"), inputs=[po_upload, po_text_box], outputs=[po_text_box])
+    inv_upload.change(fn=lambda f, t: _on_upload(f, t, "invoice"), inputs=[inv_upload, inv_text_box], outputs=[inv_text_box])
+    po_photo.change(fn=lambda f, t: _on_upload(f, t, "po"), inputs=[po_photo, po_text_box], outputs=[po_text_box])
+    inv_photo.change(fn=lambda f, t: _on_upload(f, t, "invoice"), inputs=[inv_photo, inv_text_box], outputs=[inv_text_box])
     po_text_box.change(fn=lambda t: render_po_html_from_text(t, highlight=False), inputs=[po_text_box], outputs=[po_html])
     inv_text_box.change(fn=lambda t, m, tax: render_invoice_html_from_text(t, m, apply_tax=tax, flagged=False), inputs=[inv_text_box, audit_mode, apply_tax_toggle], outputs=[invoice_html])
     audit_mode.change(fn=lambda t, m, tax: render_invoice_html_from_text(t, m, apply_tax=tax, flagged=False), inputs=[inv_text_box, audit_mode, apply_tax_toggle], outputs=[invoice_html])

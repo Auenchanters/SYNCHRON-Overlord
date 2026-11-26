@@ -1,8 +1,25 @@
+---
+title: Project Overlord
+emoji: 🧾
+colorFrom: gray
+colorTo: green
+sdk: gradio
+sdk_version: 6.32.0
+python_version: "3.12"
+app_file: app.py
+pinned: false
+short_description: Three-way PO, goods receipt and invoice audit with Gemma 4
+models:
+  - google/gemma-4-26B-A4B-it
+datasets:
+  - naver-clova-ix/cord-v2
+---
+
 # Project Overlord // The Financial Defense Engine (PS-BA1)
 
 **Autonomous Three-Way Invoice, Purchase Order & Goods-Receipt Reconciliation Platform**
 
-Project Overlord eliminates Accounts Payable (AP) budget leakage by autonomously cross-referencing **Purchase Orders (PO)**, physical **Goods Receipts (GR)**, and **Vendor Invoices** in real time. Built with **Gyansutr RAG**, a **5-Node LangGraph `StateGraph`**, **Google Gemini (`gemini-3.5-flash`)**, **PyMuPDF**, **Pillow**, **QRCode**, and a **Gradio 6 audit workspace styled with the Astryx Neutral design system** (meta/astryx).
+Project Overlord eliminates Accounts Payable (AP) budget leakage by autonomously cross-referencing **Purchase Orders (PO)**, physical **Goods Receipts (GR)**, and **Vendor Invoices** in real time. Built with **Gyansutr RAG**, a **5-Node LangGraph `StateGraph`**, **Gemma 4 (`google/gemma-4-26B-A4B-it`) on Hugging Face Inference Providers** (Gemini as an optional alternative), **PyMuPDF**, **Pillow**, **QRCode**, and a **Gradio 6 audit workspace styled with the Astryx Neutral design system** (meta/astryx).
 
 ---
 
@@ -104,17 +121,32 @@ Create `.env` from `.env.example` (`.env` is gitignored so keys are never commit
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `GOOGLE_API_KEY` | *(empty)* | Google Gemini API key. If absent or `OVERLORD_LIVE_LLM=0`, the app runs deterministically offline with zero crashes. |
-| `OVERLORD_LIVE_LLM` | `0` (`1` when live) | `1` enables live Gemini API calls (`google-genai`) with non-blocking timeout protection; `0` uses offline deterministic mode. |
-| `GEMINI_PRO_MODEL` | `gemini-3.5-flash` | Model used for PO verification and XAI Auditor Chatbot. |
-| `GEMINI_VISION_MODEL` | `gemini-3.5-flash` | Multimodal model used for Goods Receipt image verification. |
-| `GEMINI_FALLBACK_MODEL` | `gemini-3.1-flash-lite` | Automatic fallback model if the primary model errors or is unavailable. |
+| `HF_TOKEN` | *(empty)* | Hugging Face token. Turns on **Gemma 4** (`google/gemma-4-26B-A4B-it`) through Hugging Face Inference Providers for the PO clause check, goods-receipt vision count, photo reading and the auditor chat. On a Space, add it under **Settings → Variables and secrets** as a secret. |
+| `GEMMA_MODEL` | `google/gemma-4-26B-A4B-it` | Any chat model served by Inference Providers. |
+| `HF_PROVIDER` | `auto` | Inference provider (`auto` picks the first available). |
+| `GOOGLE_API_KEY` | *(empty)* | Optional Gemini key. Used only when there is no `HF_TOKEN`, or when `OVERLORD_LLM_PROVIDER=gemini`. |
+| `OVERLORD_LIVE_LLM` | `1` | `0` forces the offline deterministic engine (tests and CI use this). |
+| `OVERLORD_VISION_TIMEOUT` / `OVERLORD_TRANSCRIBE_TIMEOUT` | `15` / `30` | Seconds before a vision call gives up and the offline engine answers. |
 
-With live Gemini on, the Vision Agent asks for a JSON unit count and a `box_2d` around the missing stock and uses both. Offline, it uses the preset's signed receiving-manifest count (a custom PO is assumed fully delivered) and logs `[FALLBACK]` in telemetry.
+Every model call has a hard time cap; when it times out or no key is set, the deterministic engine answers and the telemetry logs `[FALLBACK]`. The math is never left to the model: the Supervisor re-derives every variance.
+
+**Why no LoRA fine-tune.** The model's job here is reading documents into fields and counting units; the money decisions are deterministic code. Gemma 4 already reads handwriting and till receipts well (see the samples), Inference Providers serve the base model only, and a LoRA on a 26B mixture-of-experts model needs paid GPUs. Prompting plus a strict JSON schema keeps it free.
 | `GRADIO_SERVER_PORT` | `7860` | Web server port. |
 | `GRADIO_ANALYTICS_ENABLED` | `False` | Disables Gradio telemetry in CI/local demos. |
 
 ---
+
+## 5b. Sample documents for live demos
+
+`samples/` holds phone-photo style documents a judge can try, plus the generator script. In the app, open **Sample photos** under the documents and click one.
+
+| Files | What it shows | Expected verdict |
+| :--- | :--- | :--- |
+| `synthetic/set1_*` | Handwritten PO for a team lunch, a Cafe Lido till bill, a handwritten "all received" note | Pay $60.00, hold $6.00: the 10% service charge is not on the PO |
+| `synthetic/set2_*` | Handwritten PO for 6 office chairs, handwritten invoice with a delivery fee, receiving note with 2 boxes crossed out | Pay $480.00, hold $280.00: 2 chairs missing plus the $40 fee |
+| `real/cord_v2_test_*.jpg` | Real restaurant receipts from the [CORD-v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2) dataset (CC BY 4.0), with their ground-truth JSON | The bill is read line by line; totals match the ground truth |
+
+A judge's own paper works the same way: photograph a handwritten PO or any bill in **Edit / Upload PDF** (file or webcam), or hold a receiving note up to the goods-receipt camera.
 
 ## 6. Installation, Running & Testing
 

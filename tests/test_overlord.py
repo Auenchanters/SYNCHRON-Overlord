@@ -189,3 +189,24 @@ def test_mega_update_modules():
                 script.replace("overlord_motion.js", "vendor/gsap/ScrollTrigger.js")):
         resp = client.get(url)
         assert resp.status_code == 200 and "javascript" in resp.headers["content-type"], url
+
+
+def test_photo_documents_parse_and_audit():
+    """A bill read from a photo is written in the preset layout, so the normal parsers and the 3-way check run on it."""
+    po = app.format_document_text(
+        {"number": "7310", "vendor": "Cafe Lido", "lines": [{"qty": 4, "description": "Veg thali", "amount": 48}], "total": 48},
+        "po",
+    )
+    bill = app.format_document_text(
+        {"number": "0931", "vendor": "Cafe Lido", "lines": [{"qty": 4, "description": "Veg thali", "amount": "48.00"}], "tax": 0, "total": 52.8},
+        "invoice",
+    )
+    assert "PO #7310" in po and "MAXIMUM AUTHORIZED AMOUNT: $48.00" in po
+    inv = app.parse_invoice_document(bill)
+    assert inv["invoice_number"] == "INV-0931" and inv["billed_total"] == 52.80
+    last = list(app.run_audit(app.DEFAULT_SCENARIO, "3-Way Match", po, bill))[-1]
+    assert last[9]["variance"] == 4.80
+    assert "Charges outside the itemised lines" in last[9]["reason"]
+    # Offline there is no vision model: a photo yields no text, and the editor keeps what it had.
+    assert app.transcribe_document_image("samples/synthetic/set1_restaurant_bill_cafe_lido.jpg", "invoice") == ""
+    assert app.format_document_text({"lines": []}, "invoice") == ""
