@@ -360,7 +360,8 @@ function trackRun(cells) {
   barTo ??= gsap.quickTo(bar, "scaleX", { duration: 0.4, ease: T.ease.standard });
   const busy = btn.disabled;
 
-  if (busy && !run.active) {
+  // Only a click on Execute starts a run; the button is also disabled while an uploaded document is read.
+  if (busy && !run.active && run.clicked) {
     run.active = true;
     run.started = run.clicked || performance.now(); // time from the click, not from when the button disabled
     run.step = -1;

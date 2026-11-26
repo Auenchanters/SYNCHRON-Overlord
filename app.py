@@ -29,6 +29,7 @@ import os
 import random
 import re
 import tempfile
+import threading
 import time
 import uuid
 from collections import Counter
@@ -167,8 +168,8 @@ DEFAULT_SCENARIO = "Scenario A: Unauthorized Setup Fee ($100 Overcharge)"
 # ==============================================================================
 
 HEADING_PATTERN = re.compile(
-    r"^\s*(?:#{1,4}\s+|\d+\.\d+\b).*$",
-    re.IGNORECASE,
+    # "## Terms", "1.2 Short-Shipment", or a heading line such as "NON-BILLABLE EXTRAS CLAUSE".
+    r"^\s*(?:#{1,4}\s+|\d+\.\d+\b|[A-Z][A-Za-z \-/&]{2,60}\b(?:CLAUSE|Clause)\s*:?\s*$).*$",
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -178,6 +179,7 @@ CERT_EXPORT_DIR = os.path.join(WORKSPACE_DIR, "exports")
 
 
 IMAGE_DOC_TYPES = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
+TEXT_DOC_TYPES = (".txt", ".md", ".csv", ".tsv", ".json", ".xml", ".text", "")
 
 
 def extract_uploaded_document_text(file_path: str | None, kind: str = "invoice") -> str:
@@ -188,19 +190,33 @@ def extract_uploaded_document_text(file_path: str | None, kind: str = "invoice")
     if ext in IMAGE_DOC_TYPES:
         return transcribe_document_image(file_path, kind)
     if ext == ".pdf":
-        try:
-            import pymupdf  # type: ignore
+        import pymupdf  # type: ignore
 
+        try:
             doc = pymupdf.open(file_path)
-            pages = [page.get_text("text").strip() for page in doc if page.get_text("text").strip()]
-            doc.close()
-            return "\n\n".join(pages)
-        except Exception as exc:
-            return f"[PDF PARSE ERROR: {exc}]"
+        except Exception:
+            return ""  # a broken PDF: the editor keeps its text and the user is told, no error text or server path
+        with doc:
+            text = "\n\n".join(t for t in (page.get_text("text").strip() for page in doc) if t)
+            if text or not doc.page_count:
+                return text
+            # A scanned PDF has no text layer: read it like a photo.
+            # shortcut: first page only; upgrade to stitching pages when multi-page scans show up.
+            scan = os.path.join(tempfile.gettempdir(), f"overlord_scan_{uuid.uuid4().hex[:10]}.png")
+            doc[0].get_pixmap(dpi=150).save(scan)
+        return transcribe_document_image(scan, kind)
+    if ext in TEXT_DOC_TYPES:
+        try:
+            return Path(file_path).read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return ""
+    # Any other file (a renamed phone photo, an odd extension) is tried as an image; raw bytes never reach the editor.
     try:
-        return Path(file_path).read_text(encoding="utf-8", errors="replace")
+        with Image.open(file_path) as im:
+            im.verify()
     except Exception:
         return ""
+    return transcribe_document_image(file_path, kind)
 
 
 def _money(v: Any) -> float:
@@ -404,13 +420,53 @@ def _cosine_sim(a: list[float], b: list[float]) -> float:
 # 3. REAL DOCUMENT PARSERS & LINE-ITEM RECONCILIATION ENGINE
 # ==============================================================================
 
-_LINE_ITEM_DOT_RE = re.compile(
-    r"^\s*(?:\d{1,2}\.\s*)?(.+?)\s*\.{2,}\s*\$([0-9,]+(?:\.[0-9]{1,2})?)\s*$"
-)
+# A money amount in any of the currencies people type on bills: $1,200.50, Rs. 1,20,000, INR 500, ₹99, -$20, $-20.
+_CUR = r"(?:US\$|\$|₹|Rs\.?|INR|USD|EUR|€|£)"
+_MONEY = rf"(-?\s?{_CUR}\s?-?[0-9](?:[0-9.,]*[0-9])?)"
+_LINE_ITEM_DOT_RE = re.compile(rf"^\s*(?:\d{{1,2}}\.\s*)?(.+?)\s*\.{{2,}}\s*{_MONEY}\s*$", re.IGNORECASE)
 _LINE_ITEM_COLON_RE = re.compile(
-    r"^\s*(?:\d{1,2}\.\s*)?(?!TOTAL|SUBTOTAL|MAXIMUM|AUTHORIZED|INVOICE|PO\s|BUYER|VENDOR|SKU)(.+?)\s*[:\-]\s*\$([0-9,]+(?:\.[0-9]{1,2})?)\s*$",
+    rf"^\s*(?:\d{{1,2}}\.\s*)?(?!TOTAL|SUBTOTAL|MAXIMUM|AUTHORIZED|INVOICE|PO\s|BUYER|VENDOR|SKU)(.+?)\s*[:\-]\s*{_MONEY}\s*$",
     re.IGNORECASE,
 )
+# PDF tables: "3    27in Monitor  (3 x $250.00)    $750.00" (the amount is the last thing on the line).
+_LINE_ITEM_TABLE_RE = re.compile(rf"^\s*(.*[A-Za-z].*?)\s{{2,}}{_MONEY}\s*$", re.IGNORECASE)
+# Totals, not items: a "Grand Total: $750" line must never be billed as one more line.
+_TOTAL_LINE_RE = re.compile(
+    r"^\s*(?:\d{1,2}\.\s*)?(?:GRAND\s+TOTAL|SUB\s*-?\s*TOTAL|TOTAL|AMOUNT\s+(?:DUE|PAYABLE)|BALANCE\s+DUE|NET\s+PAYABLE"
+    r"|MAXIMUM\s+AUTHORIZED|AUTHORIZED\s+AMOUNT|SALES\s+TAX)\b",
+    re.IGNORECASE,
+)
+
+
+def _money_value(token: str) -> float:
+    """'Rs. 1,20,000.00' -> 120000.0, '€1.200,00' -> 1200.0, '$1,250' -> 1250.0, '-$20' / '$-20' -> -20.0."""
+    num = re.search(r"[0-9](?:[0-9.,]*[0-9])?", token or "")
+    if not num:
+        return 0.0
+    s = num.group(0)
+    # The decimal mark is the last separator when 1-2 digits follow it, whichever symbol the country uses.
+    last = max(s.rfind("."), s.rfind(","))
+    whole, frac = (s[:last], s[last + 1 :]) if last >= 0 and len(s) - last - 1 in (1, 2) else (s, "")
+    value = float(re.sub(r"[.,]", "", whole) + (f".{frac}" if frac else ""))
+    return -value if "-" in token else value
+
+
+# PDFs often encode "-" as a soft hyphen or a Unicode dash, and spaces as no-break spaces; "PO‐DE‐311" must still parse.
+_PLAIN_TEXT = str.maketrans({c: "-" for c in "­‐‑‒–—―−"} | {" ": " ", " ": " "})
+
+
+def _doc_key(number: str) -> str:
+    """'PO #8842', 'PO-8842' and '8842' all name the same order."""
+    return re.sub(r"^PO", "", re.sub(r"[^A-Z0-9]", "", str(number).upper()))
+
+
+def _find_amount(text: str, labels: str) -> float | None:
+    """The amount written after the first label (in priority order) that appears, e.g. 'Amount Due: INR 1,25,000'."""
+    for label in labels.split("|"):
+        m = re.search(rf"\b{label}\b\s*[:\-]?\s*{_MONEY}", text, re.IGNORECASE)
+        if m:
+            return _money_value(m.group(1))
+    return None
 
 
 def _extract_line_items(text: str) -> list[dict[str, Any]]:
@@ -418,52 +474,48 @@ def _extract_line_items(text: str) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for raw_line in (text or "").splitlines():
         line = raw_line.strip()
-        if not line:
+        if not line or _TOTAL_LINE_RE.match(line):
             continue
-        upper = line.upper()
-        if any(skip in upper for skip in ("TOTAL DUE", "SUBTOTAL", "MAXIMUM AUTHORIZED", "AUTHORIZED AMOUNT", "SALES TAX")):
-            continue
-
-        m = _LINE_ITEM_DOT_RE.match(line) or _LINE_ITEM_COLON_RE.match(line)
+        m = _LINE_ITEM_DOT_RE.match(line) or _LINE_ITEM_COLON_RE.match(line) or _LINE_ITEM_TABLE_RE.match(line)
         if not m:
             continue
         desc = m.group(1).strip(" .-•")
-        amt = float(m.group(2).replace(",", ""))
-        qty_match = re.match(r"^(\d+)\s*x\s+(.+)$", desc, re.IGNORECASE)
+        amt = _money_value(m.group(2))
+        # "4x Mouse", "4 x Mouse", or a PDF table's qty column ("3    27in Monitor"); not "2026 Calendar".
+        qty_match = re.match(r"^(\d{1,5})\s*(?:[x×]\s*|\s{2,})(.+)$", desc, re.IGNORECASE)
         qty = int(qty_match.group(1)) if qty_match else 1
-        items.append({"description": desc, "qty": qty, "amount": amt})
+        items.append({"description": desc, "qty": max(qty, 1), "amount": amt})
     return items
 
 
 def parse_po_document(po_text: str) -> dict[str, Any]:
     """Parse real PO text (edited or PDF-extracted) + run Gyansutr RAG clause retrieval."""
-    text = po_text.strip() or SCENARIOS[DEFAULT_SCENARIO]["po_text"]
-    po_m = re.search(r"(PO\s*#[A-Za-z0-9\-]+|PO-[A-Za-z0-9\-]+)", text, re.IGNORECASE)
-    po_id = po_m.group(1).upper() if po_m else "PO #8842"
+    text = (po_text.strip() or SCENARIOS[DEFAULT_SCENARIO]["po_text"]).translate(_PLAIN_TEXT)
+    po_m = re.search(r"(PO\s*#\s*[A-Za-z0-9][A-Za-z0-9\-/]*|PO-[A-Za-z0-9][A-Za-z0-9\-/]*)", text, re.IGNORECASE)
+    if not po_m:
+        po_m = re.search(r"(?:PURCHASE\s+ORDER|PO)\s*(?:NO\.?|NUMBER|#)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-/]*)", text, re.IGNORECASE)
+    # A user's PO without a number must not borrow the demo's "PO #8842".
+    po_id = po_m.group(1).upper() if po_m else "the purchase order"
 
     vendor_m = re.search(r"VENDOR\s*:\s*([^\n(]+)", text, re.IGNORECASE)
-    vendor = vendor_m.group(1).strip() if vendor_m else "Apex Cognitive Systems LLC"
+    vendor = vendor_m.group(1).strip() if vendor_m else "Vendor"
 
     items = _extract_line_items(text)
 
-    cap_m = re.search(
-        r"(?:MAXIMUM\s+AUTHORIZED\s+AMOUNT|AUTHORIZED\s+AMOUNT|FLAT\s+FEE|TOTAL\s+AUTHORIZED)\s*[:\-]?\s*\$([0-9,]+(?:\.[0-9]{1,2})?)",
-        text,
-        re.IGNORECASE,
-    )
-    if cap_m:
-        authorized_amount = float(cap_m.group(1).replace(",", ""))
+    cap = _find_amount(text, r"MAXIMUM\s+AUTHORIZED\s+AMOUNT|AUTHORIZED\s+AMOUNT|TOTAL\s+AUTHORIZED|FLAT\s+FEE|GRAND\s+TOTAL|TOTAL")
+    if cap is not None:
+        authorized_amount = cap
     elif items:
         authorized_amount = round(sum(i["amount"] for i in items), 2)
     else:
-        all_dollars = re.findall(r"\$([0-9,]+(?:\.[0-9]{1,2})?)", text)
-        authorized_amount = float(all_dollars[-1].replace(",", "")) if all_dollars else 500.00
+        amounts = re.findall(_MONEY, text, re.IGNORECASE)
+        authorized_amount = _money_value(amounts[-1]) if amounts else 0.0
 
     chunks = chunk_text(text, max_words=60, overlap=12, section_hint=po_id)
     q_vec = _embed_text("authorized amount flat fee non-billable extras short-shipment")
     scored = sorted(
         [(_cosine_sim(q_vec, _embed_text(ch["text"])), ch) for ch in chunks],
-        key=lambda x: x[0],
+        key=lambda x: ("CLAUSE" in x[1]["section"].upper(), x[0]),  # a written clause outranks the PO header
         reverse=True,
     )
     top_chunks = [c for _, c in scored[:2]]
@@ -482,34 +534,46 @@ def parse_po_document(po_text: str) -> dict[str, Any]:
 
 def parse_invoice_document(inv_text: str, apply_tax: bool = False) -> dict[str, Any]:
     """Parse real Vendor Invoice text (edited or PDF-extracted) into structured line items."""
-    text = inv_text.strip() or SCENARIOS[DEFAULT_SCENARIO]["inv_text"]
-    inv_m = re.search(r"\b(INV-[A-Za-z0-9\-]+)\b", text, re.IGNORECASE)
+    text = (inv_text.strip() or SCENARIOS[DEFAULT_SCENARIO]["inv_text"]).translate(_PLAIN_TEXT)
+    inv_m = re.search(r"\b(INV-[A-Za-z0-9][A-Za-z0-9\-/]*)", text, re.IGNORECASE)
     if not inv_m:
         inv_m = re.search(
-            r"INVOICE\s*(?:NO\.?|NUMBER|#)?\s*[:#]\s*([A-Za-z0-9\-]+)",
+            r"(?:INVOICE|BILL)\s*(?:NO\.?|NUMBER|#)?\s*[:#]\s*([A-Za-z0-9][A-Za-z0-9\-/]*)",
             text,
             re.IGNORECASE,
         )
-    invoice_id = inv_m.group(1).upper() if inv_m else "INV-2024-001"
+    # A user's invoice without a number must not borrow the demo's "INV-2024-001".
+    invoice_id = inv_m.group(1).upper() if inv_m else "the invoice"
 
     items = _extract_line_items(text)
-    total_m = re.search(r"TOTAL\s+DUE\s*[:\-]?\s*\$([0-9,]+(?:\.[0-9]{1,2})?)", text, re.IGNORECASE)
+    total = _find_amount(
+        text, r"TOTAL\s+DUE|AMOUNT\s+DUE|BALANCE\s+DUE|AMOUNT\s+PAYABLE|NET\s+PAYABLE|GRAND\s+TOTAL|INVOICE\s+TOTAL|TOTAL"
+    )
     if items:
         subtotal = round(sum(i["amount"] for i in items), 2)
-        billed_total = float(total_m.group(1).replace(",", "")) if total_m else subtotal
-    elif total_m:
-        billed_total = float(total_m.group(1).replace(",", ""))
+        billed_total = total if total is not None else subtotal
+    elif total is not None:
+        billed_total = total
         subtotal = billed_total
     else:
-        all_dollars = re.findall(r"\$([0-9,]+(?:\.[0-9]{1,2})?)", text)
-        billed_total = float(all_dollars[-1].replace(",", "")) if all_dollars else 600.00
+        amounts = re.findall(_MONEY, text, re.IGNORECASE)
+        billed_total = _money_value(amounts[-1]) if amounts else 0.0
         subtotal = billed_total
 
     tax_amount = round(billed_total * 0.10, 2) if apply_tax else 0.0
     total_with_tax = round(billed_total + tax_amount, 2)
 
+    # Purchase orders the invoice cites ("PO REF: PO-9753", "(PO-9001)", "PO: PO-DE-311"); a number is required,
+    # so "PO Box" is never read as one.
+    po_refs = sorted({
+        _doc_key(m) for m in re.findall(
+            r"\bP\.?O\.?\b(?:\s*(?:REF(?:ERENCE)?|NO\.?|NUMBER))?[\s:#\-]*(?:P\.?O\.?[\s#\-]*)?([A-Za-z0-9][A-Za-z0-9\-/]*)",
+            text, re.IGNORECASE,
+        ) if any(c.isdigit() for c in m)
+    })
     return {
         "invoice_number": invoice_id,
+        "po_refs": po_refs,
         "line_items": items or [{"description": "Invoiced Total", "qty": 1, "amount": billed_total}],
         "subtotal": subtotal,
         "tax_rate": 0.10 if apply_tax else 0.0,
@@ -522,8 +586,19 @@ _QTY_PREFIX_RE = re.compile(r"^\s*\d+\s*x\s+", re.IGNORECASE)
 
 
 def _item_key(description: str) -> str:
-    """Normalized item name without its 'Nx ' quantity prefix, so 2x vs 1x of one SKU still match."""
-    return re.sub(r"[^a-z0-9]+", " ", _QTY_PREFIX_RE.sub("", description.lower())).strip()
+    """Normalized item name without its quantity or unit price, so '50x Cable @ $12' and '50 x Cable @ $14' match."""
+    d = re.sub(r"^\s*\d{1,5}\s*(?:[x×]\s*|\s{2,})", "", description.lower())
+    d = re.sub(r"\(.*?\)|@.*$", " ", d)  # "(3 x $250.00)", "@ $12.00 each"
+    d = re.sub(rf"{_MONEY}|\b(?:each|per unit|ea)\b", " ", d, flags=re.IGNORECASE)
+    return re.sub(r"[^a-z0-9]+", " ", d).strip()
+
+
+def _same_item(a: str, b: str) -> bool:
+    """Item keys that name the same goods: equal, one inside the other, or sharing most of their words."""
+    if a == b or (len(a) > 5 and len(b) > 5 and (a in b or b in a)):
+        return True
+    wa, wb = set(a.split()), set(b.split())
+    return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= 0.6
 
 
 def primary_goods_line(po_items: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -556,18 +631,25 @@ def reconcile_three_way(
 
     def _match(key: str) -> dict[str, Any] | None:
         for idx, p in enumerate(po_keys):
-            if key == p or (len(key) > 5 and (key in p or p in key)):
+            if _same_item(key, p):
                 return po_items[idx]
         return None
 
-    # Goods Receipt: value of ordered units the dock did not verify.
+    # Goods Receipt: value of ordered units the dock did not verify, per PO line when the receipt counted each line.
     gr_line = primary_goods_line(po_items)
     delivered = gr_data.get("delivered_qty")
-    ordered = int(gr_line["qty"]) if gr_line else 0
-    unit_price = float(gr_line["amount"]) / ordered if gr_line and ordered else 0.0
     uses_gr = not mode.startswith("2-Way") and delivered is not None and gr_line is not None
-    short_units = max(ordered - int(delivered), 0) if uses_gr else 0
-    shortage_value = round(short_units * unit_price, 2)
+    by_line = gr_data.get("delivered_by_line") or {}
+    received: dict[int, tuple[int, int, float]] = {}  # id(po line) -> (ordered, delivered, unit price)
+    if uses_gr:
+        counted = [(p, by_line.get(_item_key(p["description"]))) for p in po_items] if by_line else [(gr_line, delivered)]
+        for p, got in counted:
+            if got is not None and int(p["qty"]) > 0:
+                received[id(p)] = (int(p["qty"]), min(max(int(got), 0), int(p["qty"])), float(p["amount"]) / int(p["qty"]))
+    ordered = sum(o for o, _, _ in received.values()) if received else (int(gr_line["qty"]) if gr_line else 0)
+    delivered = sum(d for _, d, _ in received.values()) if received else delivered
+    short_units = sum(o - d for o, d, _ in received.values())
+    shortage_value = round(sum((o - d) * u for o, d, u in received.values()), 2)
 
     payable = round(po_amt - shortage_value, 2)
     tax_rate = float(invoice_data.get("tax_rate", 0.0))
@@ -577,21 +659,35 @@ def reconcile_three_way(
 
     flagged_items: list[dict[str, Any]] = []
     annotated_inv_items: list[dict[str, Any]] = []
+    billed_so_far: dict[int, float] = {}  # per PO line, so a line billed twice is caught
     for inv_item in inv_items:
         po_line = _match(_item_key(inv_item["description"]))
         amount = float(inv_item["amount"])
         excess, reason = 0.0, ""
         if po_line is None:
-            excess, reason = amount, "Uncontracted line item not authorized in PO"
-        elif amount > float(po_line["amount"]):
-            excess = amount - float(po_line["amount"])
-            reason = f"Billed ${amount:,.2f} exceeds PO line ${float(po_line['amount']):,.2f}"
-        elif po_line is gr_line and short_units and int(inv_item["qty"]) > int(delivered):
-            excess = (int(inv_item["qty"]) - int(delivered)) * unit_price
-            reason = (
-                f"Billed {inv_item['qty']} units but Goods Receipt verified only {delivered} of {ordered} "
-                f"({short_units} missing = ${shortage_value:,.2f})"
-            )
+            if amount > 0:
+                excess, reason = amount, "Uncontracted line item not authorized in PO"
+        else:
+            # Payable for this PO line: its PO amount, cut to the units the Goods Receipt verified (at the PO price).
+            line_amt = float(po_line["amount"])
+            allowed = line_amt
+            if id(po_line) in received:
+                line_ordered, line_delivered, line_unit = received[id(po_line)]
+                allowed = min(line_amt, round(line_delivered * line_unit, 2))
+            prev = billed_so_far.get(id(po_line), 0.0)
+            billed_so_far[id(po_line)] = prev + amount
+            excess = max(amount - max(allowed - prev, 0.0), 0.0)
+            reasons = []
+            if prev > 0 and excess > 0:
+                reasons.append(f"Billed again: this PO line was already billed ${prev:,.2f} above")
+            elif amount > line_amt:
+                reasons.append(f"Billed ${amount:,.2f} exceeds PO line ${line_amt:,.2f}")
+            if excess > 0 and allowed < line_amt and not (prev > 0):
+                reasons.append(
+                    f"Billed {inv_item['qty']} units but Goods Receipt verified only {line_delivered} of {line_ordered} "
+                    f"({line_ordered - line_delivered} missing = ${line_amt - allowed:,.2f})"
+                )
+            reason = "; ".join(reasons)
         if excess > 0:
             flagged_items.append({**inv_item, "excess": round(excess, 2), "reason": reason})
         annotated_inv_items.append({**inv_item, "flagged": excess > 0, "reason": reason})
@@ -627,17 +723,32 @@ def reconcile_three_way(
             "reason": f"Invoice total exceeds payable amount by ${variance:,.2f}",
         })
 
+    # Stop and ask a person, never "clear", when the documents cannot be trusted to match.
+    review = ""
+    po_key = _doc_key(po_data.get("po_number", "")) if any(c.isdigit() for c in str(po_data.get("po_number", ""))) else ""
+    refs = invoice_data.get("po_refs") or []
+    if po_amt <= 0 or inv_amt <= 0:
+        missing_doc = "purchase order's authorized amount" if po_amt <= 0 else "invoice total"
+        review = f"Could not read the {missing_doc}. Check the document before paying anything."
+    elif po_key and refs and po_key not in refs:
+        review = (f"The invoice references PO {', '.join(refs)}, not {po_data['po_number']}: it belongs to another order. "
+                  f"Nothing is paid against {po_data['po_number']}.")
+    if review:
+        variance = round(max(inv_amt, 0.0), 2)
+        flagged_items = [{"description": "Needs review", "qty": 1, "amount": inv_amt, "excess": variance, "reason": review}]
+
     primary_extra = (
         _QTY_PREFIX_RE.sub("", flagged_items[0]["description"]).split("(")[0].strip()
         if flagged_items
         else "Unapproved Charge"
     )
-    recovered = variance
+    recovered = 0.0 if review else variance  # a hold for review is not money proven overbilled
     if chaos_triggered and recovered == 0.0:
         recovered = inv_amt  # Vision hold protects the full invoice until delivery is re-proven.
 
     return {
-        "detected": variance > 0 or chaos_triggered,
+        "detected": variance > 0 or chaos_triggered or bool(review),
+        "review": review,
         "chaos_triggered": chaos_triggered,
         "po_authorized": po_amt,
         "payable_cap": payable_cap,
@@ -649,6 +760,9 @@ def reconcile_three_way(
         "invoice_billed": inv_amt,
         "line_excess": line_excess,
         "variance": variance,
+        # What to release now: the bill minus everything held. (The PO cap alone over-pays when one line is
+        # overpriced but the total is still under the cap.)
+        "pay_amount": 0.0 if review else round(max(inv_amt - variance, 0.0), 2),
         "recovered": round(recovered, 2),
         "flagged_items": flagged_items,
         "annotated_inv_items": annotated_inv_items,
@@ -940,16 +1054,38 @@ def _parse_json_reply(raw: str | None) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def gemini_vision_inspect(image_bytes: bytes | None, item: str, ordered: int) -> dict[str, Any] | None:
-    """Ask the vision model (Gemma 4 or Gemini) to count delivered units; returns parsed JSON or None (offline / bad reply)."""
+def gemini_vision_inspect(
+    image_bytes: bytes | None, item: str, ordered: int, lines: list[tuple[str, int]] | None = None
+) -> dict[str, Any] | None:
+    """Ask the vision model (Gemma 4 or Gemini) to count delivered units; returns parsed JSON or None (offline / bad reply).
+
+    With `lines` (a PO of several items) it counts each line, so a note like "4 keyboards, 2 of 4 mice" is not
+    read as a full delivery of the biggest line only; the reply then carries `received` (one count per line).
+    """
     if not image_bytes:
         return None
+    source = (
+        "It may be a photo, a scan, a handwritten receiving note or a sketch: count what it shows or states was received."
+    )
+    if lines:
+        expected = "\n".join(f"{n}. {qty}x {name}" for n, (name, qty) in enumerate(lines, start=1))
+        prompt = (
+            f"You are a warehouse receiving inspector. The purchase order expects these lines:\n{expected}\n"
+            f"Count the units received for each numbered line in this Goods Receipt image. {source} "
+            "A line the receipt says arrived in full, or a fee or service that is not a physical item, counts as fully "
+            'received. Reply with JSON only: {"received": [<int for line 1>, <int for line 2>, ...], '
+            '"summary": "<max 12 words>", "confidence": <0..1>, '
+            '"missing_box_2d": [ymin, xmin, ymax, xmax] normalized 0-1000 around the empty/missing area, or null}'
+        )
+    else:
+        prompt = (
+            f"You are a warehouse receiving inspector. The purchase order expects {ordered}x {item}. "
+            f"Count the units visibly delivered in this Goods Receipt image. {source} Reply with JSON only: "
+            '{"delivered_qty": <int>, "summary": "<max 12 words>", "confidence": <0..1>, '
+            '"missing_box_2d": [ymin, xmin, ymax, xmax] normalized 0-1000 around the empty/missing area, or null}'
+        )
     raw = _call_llm_safe(
-        f"You are a warehouse receiving inspector. The purchase order expects {ordered}x {item}. "
-        "Count the units visibly delivered in this Goods Receipt image. It may be a photo, a scan, a handwritten "
-        "receiving note or a sketch: count what it shows or states was received. Reply with JSON only: "
-        '{"delivered_qty": <int>, "summary": "<max 12 words>", "confidence": <0..1>, '
-        '"missing_box_2d": [ymin, xmin, ymax, xmax] normalized 0-1000 around the empty/missing area, or null}',
+        prompt,
         image_bytes=image_bytes,
         model_name=os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash"),
         json_mode=True,
@@ -957,6 +1093,11 @@ def gemini_vision_inspect(image_bytes: bytes | None, item: str, ordered: int) ->
     )
     data = _parse_json_reply(raw)
     try:
+        if lines:
+            data["received"] = [int(n) for n in data["received"]]  # type: ignore[index]
+            if len(data["received"]) != len(lines):
+                return None
+            data["delivered_qty"] = sum(data["received"])
         data["delivered_qty"] = int(data["delivered_qty"])  # type: ignore[index]
         return data
     except (KeyError, TypeError, ValueError):
@@ -964,6 +1105,8 @@ def gemini_vision_inspect(image_bytes: bytes | None, item: str, ordered: int) ->
 
 
 _ADVISORY_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="overlord-advisory")
+_READING: Counter[str] = Counter()  # uploaded documents still being read, per browser session
+_READING_LOCK = threading.Lock()
 
 
 def po_parser_node(state: OverlordState) -> dict[str, Any]:
@@ -987,6 +1130,8 @@ def po_parser_node(state: OverlordState) -> dict[str, Any]:
         _log(
             f"[RAG] Governing clause retrieved: {po_data['retrieved_sections'][0]} "
             f"(cosine {po_data['retrieved_score']:.2f})"
+            if po_data["retrieved_sections"][0] != po_data["po_number"]
+            else "[RAG] No clause headings in this PO -> its line items and total govern."
         ),
     ]
     return {"po_data": po_data, "clause_check": clause_check, "step_logs": logs, "logs": logs}
@@ -1030,14 +1175,46 @@ def vision_agent_node(state: OverlordState) -> dict[str, Any]:
         ]
         return {"gr_image_path": img_path, "gr_data": gr_data, "step_logs": logs, "logs": logs}
 
-    logs = [
-        _log(f"[STATE: ROUTING] -> Node 2: Vision Agent ({vision_model})"),
-        _log(f"[TOOL CALL] -> PIL.Image.preprocess({os.path.basename(img_path)}, {dim_label})"),
-    ]
-    vision = gemini_vision_inspect(img_bytes, item_name, ordered)
+    logs = [_log(f"[STATE: ROUTING] -> Node 2: Vision Agent ({vision_model})")]
+    # The demo's dock scans are proof for their own PO only. A user's own PO with no receipt uploaded must not be
+    # counted against them (it read "1 of 50 cables delivered" and held almost the whole bill).
+    po_number = str((state.get("po_data") or {}).get("po_number", ""))
+    scan_name = os.path.basename(img_path)
+    if scan_name.startswith("overlord_gr_dock_scan_"):
+        scan_po = scan_name.removeprefix("overlord_gr_dock_scan_").rsplit(".", 1)[0]
+        if scan_po not in re.sub(r"[^A-Za-z0-9]", "", po_number):
+            gr_data = {
+                "image_path": img_path,
+                "dimensions": dim_label,
+                "vision_summary": f"No goods receipt for {po_number}: delivery not checked. Upload a receiving note or dock photo.",
+                "confidence": "",
+                "verified": False,
+                "chaos_triggered": False,
+                "ordered_qty": ordered,
+                "delivered_qty": None,
+                "not_checked": True,
+            }
+            logs.append(_log(f"[GOODS RECEIPT] The loaded dock scan belongs to PO #{scan_po}, not {po_number} -> "
+                             "delivery not checked. Upload a receiving note to check it."))
+            return {"gr_image_path": img_path, "gr_data": gr_data, "step_logs": logs, "logs": logs}
+
+    logs.append(_log(f"[TOOL CALL] -> PIL.Image.preprocess({scan_name}, {dim_label})"))
+    goods = [p for p in po_lines if int(p.get("qty") or 0) > 0]
+    multi = len(goods) > 1
+    names = [re.sub(r"^\s*\d+\s*x\s+", "", p["description"], flags=re.IGNORECASE).split("@")[0].strip() for p in goods]
+    vision = gemini_vision_inspect(img_bytes, item_name, ordered, list(zip(names, [int(p["qty"]) for p in goods], strict=True)) if multi else None)
     box: list[int] | None = None
-    if vision:
+    by_line: dict[str, int] = {}
+    short_note = ""
+    if vision and multi:
+        got = [min(max(n, 0), int(p["qty"])) for n, p in zip(vision["received"], goods, strict=True)]
+        by_line = {_item_key(p["description"]): n for p, n in zip(goods, got, strict=True)}
+        ordered = sum(int(p["qty"]) for p in goods)
+        delivered = sum(got)
+        short_note = ", ".join(f"{n} of {p['qty']} {name}" for n, p, name in zip(got, goods, names, strict=True) if n < int(p["qty"]))
+    elif vision:
         delivered = min(max(vision["delivered_qty"], 0), ordered)
+    if vision:
         try:
             confidence = f"{float(vision.get('confidence', 0.95)) * 100:.1f}%"
         except (TypeError, ValueError):
@@ -1061,7 +1238,7 @@ def vision_agent_node(state: OverlordState) -> dict[str, Any]:
 
     missing = ordered - delivered
     summary = (
-        f"{delivered} of {ordered} Units Delivered ({missing} Units Missing)."
+        f"{delivered} of {ordered} Units Delivered ({missing} Units Missing{': ' + short_note if short_note else ''})."
         if missing
         else f"{delivered} of {ordered} Units Delivered. Match Confirmed."
     )
@@ -1077,6 +1254,7 @@ def vision_agent_node(state: OverlordState) -> dict[str, Any]:
         "chaos_triggered": False,
         "ordered_qty": ordered,
         "delivered_qty": delivered,
+        "delivered_by_line": by_line,
         "xai_bbox_drawn": bool(missing),
     }
     logs.append(_log(f"[EXTRACT] -> Vision AI Confidence: {confidence} | {summary}"))
@@ -1097,7 +1275,11 @@ def invoice_parser_node(state: OverlordState) -> dict[str, Any]:
         ),
     ]
     clause_check = state.get("clause_check")
-    note = clause_check.result() if clause_check else None
+    try:
+        # Advisory only: it normally lands during the vision count; a slow provider must not hold up the verdict.
+        note = clause_check.result(timeout=0.3) if clause_check else None
+    except Exception:
+        note = None
     if note:
         logs.insert(0, _log(f"[{llm_label().upper()} CLAUSE CHECK] {note[:160]}"))
     return {"invoice_data": inv_data, "step_logs": logs, "logs": logs}
@@ -1115,18 +1297,35 @@ def auditor_node(state: OverlordState) -> dict[str, Any]:
     inv_id = inv_data.get("invoice_number", "INV-2024-001")
     vendor = po_data.get("vendor", "Vendor Billing")
     clause = (po_data.get("retrieved_sections") or ["Section 1.2"])[0]
+    # A PO with no clause headings yields its own number as the "section"; cite its line items instead.
+    clause_ref = f"the line items and total authorized on {po_id}" if clause == po_id else f"{clause} of {po_id}"
     po_amt = discrepancy["po_authorized"]
-    payable = discrepancy["payable_cap"]
+    payable = discrepancy["pay_amount"]
     inv_amt = discrepancy["invoice_billed"]
     variance = discrepancy["variance"]
-    extra_label = discrepancy["primary_extra_label"]
     chaos_hit = discrepancy["chaos_triggered"]
     short_units = discrepancy["shortage_units"]
-    flagged_lines = "".join(
-        f"  - {f['description']}: ${f['excess']:,.2f} ({f['reason']})\n" for f in discrepancy["flagged_items"]
-    )
+    flagged = discrepancy["flagged_items"]
+    flagged_lines = "".join(f"  - {f['description']}: ${f['excess']:,.2f} ({f['reason']})\n" for f in flagged)
 
-    if chaos_hit:
+    def _line_reason(f: dict[str, Any]) -> str:
+        label = _QTY_PREFIX_RE.sub("", f["description"]).split("(")[0].split("@")[0].strip()
+        if f["reason"].startswith("Uncontracted"):
+            return f'Vendor added "{label}", which is not on {po_id}.'
+        if "exceeds PO line" in f["reason"]:
+            return f'"{label}" on {po_id}: {f["reason"].replace(" exceeds PO line ", " against ").replace("; Billed", "; billed")}.'
+        return f'"{label}": {f["reason"]}.' if label else f"{f['reason']}."
+
+    if discrepancy["review"]:
+        reason = discrepancy["review"]
+        dispute_email = (
+            f"Subject: Query - Invoice {inv_id} (Ref: {po_id})\n\n"
+            f"Dear {vendor} Billing Team,\n\n"
+            f"We could not match Invoice {inv_id} (${inv_amt:,.2f}) to {po_id}. {reason}\n\n"
+            "Please send a corrected invoice that cites the right purchase order. The full amount is on hold until then.\n\n"
+            "Regards,\nAccounts Payable // Project Overlord"
+        )
+    elif chaos_hit:
         reason = (
             f"{gr_data['vision_summary']} "
             + (f"Plus ${variance:,.2f} invoice variance detected." if variance > 0 else "Short-payment initiated.")
@@ -1142,30 +1341,39 @@ def auditor_node(state: OverlordState) -> dict[str, Any]:
             f"Regards,\nAccounts Payable // Project Overlord"
         )
     elif discrepancy["detected"]:
-        if short_units:
+        price_or_repeat = bool(flagged) and (
+            "exceeds PO line" in flagged[0]["reason"] or flagged[0]["reason"].startswith("Billed again")
+        )
+        if short_units and not price_or_repeat:
             reason = (
                 f"Goods Receipt verified only {discrepancy['delivered_qty']} of {discrepancy['ordered_qty']} units; "
-                f"invoice bills ${inv_amt:,.2f} against a payable ${payable:,.2f} under {clause}."
+                f"invoice bills ${inv_amt:,.2f} against a payable ${payable:,.2f} under {clause_ref}."
             )
+        elif flagged:
+            reason = _line_reason(flagged[0]) + (f" Plus {len(flagged) - 1} more disputed line(s)." if len(flagged) > 1 else "")
         else:
-            reason = f"Invoice exceeds authorized {po_id} amount. Vendor added unauthorized \"{extra_label}\"."
+            reason = f"Invoice total exceeds what {po_id} authorizes by ${variance:,.2f}."
         dispute_email = (
             f"Subject: Dispute - Invoice {inv_id} (Ref: {po_id})\n\n"
             f"Dear {vendor} Billing Team,\n\n"
             f"Our automated {audit_mode} has flagged Invoice {inv_id}. "
-            f"The billed amount (${inv_amt:,.2f}) exceeds the payable amount under {po_id} "
-            f"(${payable:,.2f}) by ${variance:,.2f}.\n\n"
+            f"Of the billed ${inv_amt:,.2f}, ${payable:,.2f} is payable under {po_id}; "
+            f"${variance:,.2f} is disputed.\n\n"
             f"Disputed line items:\n{flagged_lines}\n"
-            f"Governing clause: {po_id}, {clause}.\n\n"
-            f"Payment is on hold pending a corrected invoice for ${payable:,.2f}.\n\n"
+            f"Governing terms: {clause_ref}.\n\n"
+            f"We will pay ${payable:,.2f} now. The remaining ${variance:,.2f} is on hold pending a corrected invoice "
+            "or proof of the charge.\n\n"
             f"Regards,\nAccounts Payable // Project Overlord"
         )
     else:
         reason = f"3-Way Match passed cleanly for {po_id} and {inv_id}."
-        dispute_email = f"3-WAY MATCH CLEARED — {po_id} (${payable:,.2f}) == {inv_id} (${inv_amt:,.2f})."
+        dispute_email = (
+            f"3-WAY MATCH CLEARED — {inv_id} (${inv_amt:,.2f}) is within {po_id} (${po_amt:,.2f} authorized) "
+            "and matches the goods received."
+        )
 
     discrepancy["reason"] = reason
-    discrepancy["clause"] = clause
+    discrepancy["clause"] = clause if clause != po_id else clause_ref  # the chat cites this
 
     log_audit_receipt({
         "event": "OVERLORD_AUDIT",
@@ -1183,7 +1391,9 @@ def auditor_node(state: OverlordState) -> dict[str, Any]:
     })
 
     if discrepancy["detected"]:
-        if chaos_hit:
+        if discrepancy["review"]:
+            flag_msg = f"FLAG :: Needs review, full ${inv_amt:,.2f} held. {discrepancy['review']}"
+        elif chaos_hit:
             flag_msg = (
                 f"FLAG :: CHAOS VISION EXCEPTION + ${variance:,.2f} variance! Short-payment initiated."
                 if variance > 0
@@ -1219,6 +1429,10 @@ def supervisor_node(state: OverlordState) -> dict[str, Any]:
     line_sum = round(sum(float(f.get("excess", 0.0)) for f in disc.get("flagged_items", [])), 2)
     expected = round(max(inv_amt - cap, line_sum, 0.0), 2)
     claimed = round(float(disc.get("variance", 0.0)), 2)
+    if disc.get("review"):
+        logs = [_log("[SUPERVISOR AGENT] Verifying Auditor's math..."),
+                _log(f"[SUPERVISOR AGENT] Documents do not match ({disc['review']}) -> routing to human review, nothing released.")]
+        return {"step_logs": logs, "logs": logs}
 
     def _fmt(val: float) -> str:
         return str(int(val)) if float(val).is_integer() else f"{val:.2f}"
@@ -1227,7 +1441,7 @@ def supervisor_node(state: OverlordState) -> dict[str, Any]:
     update: dict[str, Any] = {}
     if abs(expected - claimed) > 0.005:
         disc.update(variance=expected, recovered=expected, detected=expected > 0 or disc.get("chaos_triggered", False),
-                    supervisor_override=True)
+                    pay_amount=round(max(inv_amt - expected, 0.0), 2), supervisor_override=True)
         update["discrepancy"] = disc
         logs.append(_log(
             f"[SUPERVISOR AGENT] MISMATCH: Auditor claimed {_fmt(claimed)}, recomputed {_fmt(expected)}. "
@@ -1243,7 +1457,10 @@ def supervisor_node(state: OverlordState) -> dict[str, Any]:
     elif disc.get("detected"):
         logs.append(_log("[SUPERVISOR AGENT] Vision short-payment hold verified. Routing to Dispute."))
     else:
-        logs.append(_log(f"[SUPERVISOR AGENT] {_fmt(inv_amt)} - {_fmt(cap)} = 0. Approved for UPI Settlement."))
+        relation = "=" if abs(inv_amt - cap) <= 0.005 else "is within"
+        logs.append(_log(
+            f"[SUPERVISOR AGENT] Billed {_fmt(inv_amt)} {relation} payable {_fmt(cap)}; 0 disputed. Approved for UPI Settlement."
+        ))
     return {**update, "step_logs": logs, "logs": logs}
 
 
@@ -1477,8 +1694,12 @@ def chat_with_auditor(
     prompt = f"{recent_turns}\nUSER: {text}".strip() if recent_turns else text
 
     reply: str | None = None
+    # "What if the invoice was $450?" is arithmetic on the audited figures: answer it exactly, never let the model
+    # refuse it or guess (Gemma replied "I cannot perform hypothetical recomputations" to the app's own quick button).
+    if _WHAT_IF_AMOUNT_RE.search(text) and _has(text.lower(), "if", "would", "suppose", "instead"):
+        reply = _build_xai_fallback_reply(text, po_text, gr_text, inv_text, ctx)
     try:
-        reply = _call_llm_safe(
+        reply = reply or _call_llm_safe(
             prompt,
             system_instruction=system_prompt,
             model_name=os.getenv("GEMINI_PRO_MODEL", "gemini-3.5-flash"),
@@ -2259,12 +2480,21 @@ def render_findings_html(
     chaos_triggered: bool = False,
     billed: float = 0.0,
     payable: float | None = None,
+    review: str = "",
 ) -> str:
     """The verdict as the page's answer: how much to pay, how much to hold, and why."""
     if state == "idle":
         return '<div class="ov-verdict findings-idle">No verdict yet. Press <strong>Execute 3-Way Match</strong> and the amount to pay appears here.</div>'
     if state == "scanning":
         return '<div class="ov-verdict findings-idle">Checking the three documents against each other…</div>'
+    if review:
+        # The documents cannot be matched (an unreadable amount, or an invoice for another PO): hold it all, no "overcharge".
+        return (
+            '<div class="ov-verdict ov-verdict--alert">'
+            + _verdict_figures(0.0, max(billed, 0.0), billed, "until a person checks the documents", "needs review")
+            + '<div class="ov-verdict-why"><span class="ov-stamp">Needs review</span>'
+            f'<div class="alert-title">Check before paying</div><div class="alert-body">{escape(review)}</div></div></div>'
+        )
     # Same rule as the UPI checkout (_settlement_amount): pay the smaller of the verified payable and the bill.
     pay = round(min(payable if payable is not None else billed - variance, billed), 2) if billed else 0.0
     if not chaos_triggered and variance <= 0:
@@ -2400,9 +2630,10 @@ def run_audit(
                         gr_short = bool(gr_data.get("xai_bbox_drawn"))
                         gr_ver = (
                             "Not verified" if chaos_hit
+                            else "Not checked" if gr_data.get("not_checked")
                             else (f"{gr_data.get('delivered_qty')} of {gr_data.get('ordered_qty')} units" if gr_short else "All units")
                         )
-                        gr_st = "alert" if (chaos_hit or gr_short) else "ok"
+                        gr_st = "alert" if (chaos_hit or gr_short) else "neutral" if gr_data.get("not_checked") else "ok"
                         vision_badge = render_vision_badge_html(
                             confidence=gr_data.get("confidence", "99.4%"),
                             detail=gr_data.get("vision_summary", sc["gr_status"]),
@@ -2417,7 +2648,7 @@ def run_audit(
                         "po_id": po_data.get("po_number", sc["po_id"]),
                         "inv_id": inv_data.get("invoice_number", sc["inv_id"]),
                         "po_amount": po_amt,
-                        "payable": float(disc.get("payable_cap", po_amt)),
+                        "payable": float(disc.get("pay_amount", disc.get("payable_cap", po_amt))),
                         "inv_total": inv_amt,
                         "variance": variance,
                         "recovered": recovered,
@@ -2452,7 +2683,7 @@ def run_audit(
                             gr_verified=gr_ver,
                             gr_state=gr_st,
                             invoice_billed=f"${inv_amt:,.2f}" if has_inv else "—",
-                            variance=(f"+${variance:,.2f}" if (flagged and variance > 0) else ("Held" if (flagged and chaos_hit) else ("$0.00" if (is_done and not flagged) else "—"))),
+                            variance=("Held" if disc.get("review") else f"+${variance:,.2f}" if (flagged and variance > 0) else ("Held" if (flagged and chaos_hit) else ("$0.00" if (is_done and not flagged) else "—"))),
                             variance_state="alert" if flagged else "neutral",
                         ),
                         "\n".join(cumulative_logs),
@@ -2462,7 +2693,8 @@ def run_audit(
                             reason=disc.get("reason", ""),
                             chaos_triggered=chaos_hit,
                             billed=inv_amt,
-                            payable=float(disc.get("payable_cap", po_amt)),
+                            payable=float(disc.get("pay_amount", disc.get("payable_cap", po_amt))),
+                            review=disc.get("review", ""),
                         ),
                         snapshot.get("dispute_email", ""),
                         render_po_html_from_text(live_po_text, highlight=has_po),
@@ -2577,7 +2809,7 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                             po_html = gr.HTML(value=render_po_html_from_text(SCENARIOS[DEFAULT_SCENARIO]["po_text"], highlight=False))
                         with gr.Tab("Edit / Upload PDF"):
                             po_upload = gr.File(label="Upload a purchase order (PDF, text or photo)", file_types=[".pdf", ".txt", *IMAGE_DOC_TYPES], type="filepath")
-                            po_photo = gr.Image(label="Or take a photo (handwritten is fine)", sources=["webcam", "clipboard"], type="filepath", height=160)
+                            po_photo = gr.Image(label="Or take a photo (handwritten is fine)", sources=["webcam", "clipboard"], type="filepath", height=220)
                             po_text_box = gr.Textbox(label="Purchase order text", value=SCENARIOS[DEFAULT_SCENARIO]["po_text"], lines=11, elem_classes=["ov-doc-editor"])
 
                 with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
@@ -2607,7 +2839,7 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                             invoice_html = gr.HTML(value=render_invoice_html_from_text(SCENARIOS[DEFAULT_SCENARIO]["inv_text"], "3-Way Match", flagged=False))
                         with gr.Tab("Edit / Upload PDF"):
                             inv_upload = gr.File(label="Upload a vendor invoice (PDF, text or photo of any bill)", file_types=[".pdf", ".txt", *IMAGE_DOC_TYPES], type="filepath")
-                            inv_photo = gr.Image(label="Or take a photo (a restaurant bill works)", sources=["webcam", "clipboard"], type="filepath", height=160)
+                            inv_photo = gr.Image(label="Or take a photo (a restaurant bill works)", sources=["webcam", "clipboard"], type="filepath", height=220)
                             inv_text_box = gr.Textbox(label="Vendor invoice text", value=SCENARIOS[DEFAULT_SCENARIO]["inv_text"], lines=11, elem_classes=["ov-doc-editor"])
 
             # Phone-photo samples (handwritten POs, a restaurant bill, receiving notes, real CORD-v2 receipts) for live demos.
@@ -2733,10 +2965,11 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
         if not file_path:
             return gr.update()
         text = extract_uploaded_document_text(file_path, kind)
-        if not text and Path(file_path).suffix.lower() in IMAGE_DOC_TYPES:
+        if not text:
             gr.Warning(
-                "Couldn't read that photo. Reading photos needs the vision model (set HF_TOKEN for Gemma 4); "
-                "the previous text is kept."
+                "Couldn't read a purchase order or bill in that file, so the previous text is kept. Photos and scanned "
+                "PDFs need the vision model (set HF_TOKEN for Gemma 4); a damaged file or a picture of something else "
+                "can't be read."
             )
         return text or fallback_text
 
@@ -2750,10 +2983,26 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
         ],
     )
     # Editors re-render the diff views through their own .change handlers below.
-    po_upload.change(fn=lambda f, t: _on_upload(f, t, "po"), inputs=[po_upload, po_text_box], outputs=[po_text_box])
-    inv_upload.change(fn=lambda f, t: _on_upload(f, t, "invoice"), inputs=[inv_upload, inv_text_box], outputs=[inv_text_box])
-    po_photo.change(fn=lambda f, t: _on_upload(f, t, "po"), inputs=[po_photo, po_text_box], outputs=[po_text_box])
-    inv_photo.change(fn=lambda f, t: _on_upload(f, t, "invoice"), inputs=[inv_photo, inv_text_box], outputs=[inv_text_box])
+    # Reading a photo takes a few seconds; Execute waits for every pending read, or the check would run on the old
+    # document text. Counted per browser session on the server, so two uploads at once keep it locked until both land.
+    def _reading_started(request: gr.Request):
+        with _READING_LOCK:
+            _READING[request.session_hash] += 1
+        return gr.update(interactive=False, value="Reading the document…")
+
+    def _reading_done(request: gr.Request):
+        with _READING_LOCK:
+            _READING[request.session_hash] -= 1
+            busy = _READING[request.session_hash] > 0
+            if not busy:
+                del _READING[request.session_hash]
+        return gr.update() if busy else gr.update(interactive=True, value="Execute 3-Way Match")
+
+    for _src, _box, _kind in ((po_upload, po_text_box, "po"), (inv_upload, inv_text_box, "invoice"),
+                              (po_photo, po_text_box, "po"), (inv_photo, inv_text_box, "invoice")):
+        _src.change(fn=_reading_started, outputs=[run_btn], queue=False).then(
+            fn=lambda f, t, k=_kind: _on_upload(f, t, k), inputs=[_src, _box], outputs=[_box]
+        ).then(fn=_reading_done, outputs=[run_btn], queue=False)
     po_text_box.change(fn=lambda t: render_po_html_from_text(t, highlight=False), inputs=[po_text_box], outputs=[po_html])
     inv_text_box.change(fn=lambda t, m, tax: render_invoice_html_from_text(t, m, apply_tax=tax, flagged=False), inputs=[inv_text_box, audit_mode, apply_tax_toggle], outputs=[invoice_html])
     audit_mode.change(fn=lambda t, m, tax: render_invoice_html_from_text(t, m, apply_tax=tax, flagged=False), inputs=[inv_text_box, audit_mode, apply_tax_toggle], outputs=[invoice_html])

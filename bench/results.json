@@ -1,38 +1,38 @@
 {
   "code_quality": {
     "ruff_clean": true,
-    "tests_passed": 6,
-    "coverage_app_py": "83%",
-    "test_wall_s": 24.78,
-    "app_py_lines": 2854
+    "tests_passed": 8,
+    "coverage_app_py": "84%",
+    "test_wall_s": 24.77,
+    "app_py_lines": 3103
   },
   "import": {
-    "import_app_s": 7.133,
+    "import_app_s": 7.117,
     "runs": 3
   },
   "boot_and_page": {
-    "boot_to_http_200_s": 7.884,
+    "boot_to_http_200_s": 7.414,
     "runs": 3,
     "static_gzip_served": false,
-    "html_kb": 352.6,
-    "html_kb_over_wire": 28.8,
-    "config_kb": 152.1,
-    "config_ms": 94.1,
-    "own_static_kb": 705.1,
+    "html_kb": 364.6,
+    "html_kb_over_wire": 29.6,
+    "config_kb": 157.2,
+    "config_ms": 75.3,
+    "own_static_kb": 705.2,
     "own_static_kb_over_wire": 196.7
   },
   "engine_offline": {
     "A": {
-      "graph_ms": 11.0,
-      "ui_run_s": 0.86,
+      "graph_ms": 20.0,
+      "ui_run_s": 0.9,
       "pay_hold": [
         500.0,
         100.0
       ]
     },
     "B": {
-      "graph_ms": 21.0,
-      "ui_run_s": 0.95,
+      "graph_ms": 20.0,
+      "ui_run_s": 0.98,
       "pay_hold": [
         8000.0,
         2000.0
@@ -40,7 +40,7 @@
     },
     "C": {
       "graph_ms": 17.0,
-      "ui_run_s": 0.82,
+      "ui_run_s": 0.8,
       "pay_hold": [
         1200.0,
         0.0
@@ -55,42 +55,42 @@
         "expected": 60.0,
         "read": 60.0,
         "exact": true,
-        "median_s": 2.343
+        "median_s": 2.774
       },
       {
         "file": "synthetic/set1_restaurant_bill_cafe_lido.jpg",
         "expected": 66.0,
         "read": 66.0,
         "exact": true,
-        "median_s": 1.854
+        "median_s": 2.928
       },
       {
         "file": "synthetic/set2_handwritten_po_office_chairs.jpg",
         "expected": 720.0,
         "read": 720.0,
         "exact": true,
-        "median_s": 2.336
+        "median_s": 2.579
       },
       {
         "file": "synthetic/set2_handwritten_invoice_office_chairs.jpg",
         "expected": 760.0,
         "read": 760.0,
         "exact": true,
-        "median_s": 2.217
+        "median_s": 2.231
       },
       {
         "file": "real/cord_v2_test_001.jpg",
         "expected": 91000.0,
         "read": 91000.0,
         "exact": true,
-        "median_s": 2.102
+        "median_s": 2.316
       },
       {
         "file": "real/cord_v2_test_004.jpg",
         "expected": 174600.0,
         "read": 174600.0,
         "exact": true,
-        "median_s": 2.272
+        "median_s": 2.683
       }
     ],
     "reads_exact": "6/6",
@@ -106,10 +106,10 @@
           6.0
         ],
         "correct": true,
-        "delivered": 4,
+        "delivered": 8,
         "node_s": {
-          "po_parser": 0.004,
-          "vision_agent": 1.896,
+          "po_parser": 0.002,
+          "vision_agent": 1.996,
           "invoice_parser": 0.001,
           "auditor": 0.004,
           "supervisor": 0.0
@@ -128,10 +128,10 @@
         "correct": true,
         "delivered": 4,
         "node_s": {
-          "po_parser": 0.002,
-          "vision_agent": 2.205,
+          "po_parser": 0.001,
+          "vision_agent": 7.255,
           "invoice_parser": 0.001,
-          "auditor": 0.005,
+          "auditor": 0.004,
           "supervisor": 0.0
         }
       }
@@ -144,14 +144,14 @@
       "delivered": 8,
       "node_s": {
         "po_parser": 0.002,
-        "vision_agent": 1.069,
+        "vision_agent": 0.949,
         "invoice_parser": 0.001,
-        "auditor": 0.004,
+        "auditor": 0.003,
         "supervisor": 0.0
       }
     },
-    "chat_median_s": 1.412,
-    "chat_reply_chars": 344,
+    "chat_median_s": 1.03,
+    "chat_reply_chars": 385,
     "runs": 3
   }
 }

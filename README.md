@@ -27,7 +27,7 @@ datasets:
 [![LangGraph](https://img.shields.io/badge/LangGraph-5_agents-1C3C3C)](https://github.com/langchain-ai/langgraph)
 [![Gradio 6.32](https://img.shields.io/badge/Gradio-6.32-F97316?logo=gradio&logoColor=white)](https://www.gradio.app/)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![tests](https://img.shields.io/badge/tests-6_passing-3FB950)](tests/)
+[![tests](https://img.shields.io/badge/tests-8_passing-3FB950)](tests/)
 [![ruff](https://img.shields.io/badge/ruff-clean-3FB950)](pyproject.toml)
 
 Before an invoice is paid, Overlord compares it with the **purchase order** (what was authorized) and the **goods receipt** (what actually arrived). Five LangGraph agents read the three documents, count the delivered units from a photo, and return one verdict: **Pay $X, Hold $Y**, with the disputed lines flagged, a clause-cited dispute email drafted, and an append-only audit record written. Documents can be typed, PDFs, or **phone photos of handwritten notes and restaurant bills**, read by **Gemma 4** through Hugging Face Inference Providers.
@@ -78,31 +78,31 @@ Model `google/gemma-4-26B-A4B-it` via Hugging Face Inference Providers, median o
 
 | Document (in `samples/`) | Kind | Expected total | Gemma 4 read | Latency |
 |---|---|---:|---:|---:|
-| `set1_handwritten_po_team_lunch.jpg` | handwritten PO | 60.00 | **60.00** ✅ | 2.34 s |
-| `set1_restaurant_bill_cafe_lido.jpg` | restaurant bill | 66.00 | **66.00** ✅ | 1.85 s |
-| `set2_handwritten_po_office_chairs.jpg` | handwritten PO | 720.00 | **720.00** ✅ | 2.34 s |
-| `set2_handwritten_invoice_office_chairs.jpg` | handwritten invoice | 760.00 | **760.00** ✅ | 2.22 s |
-| `cord_v2_test_001.jpg` (real, CORD-v2) | till receipt | 91,000 | **91,000** ✅ | 2.10 s |
-| `cord_v2_test_004.jpg` (real, CORD-v2) | till receipt | 174,600 | **174,600** ✅ | 2.27 s |
+| `set1_handwritten_po_team_lunch.jpg` | handwritten PO | 60.00 | **60.00** ✅ | 2.77 s |
+| `set1_restaurant_bill_cafe_lido.jpg` | restaurant bill | 66.00 | **66.00** ✅ | 2.93 s |
+| `set2_handwritten_po_office_chairs.jpg` | handwritten PO | 720.00 | **720.00** ✅ | 2.58 s |
+| `set2_handwritten_invoice_office_chairs.jpg` | handwritten invoice | 760.00 | **760.00** ✅ | 2.23 s |
+| `cord_v2_test_001.jpg` (real, CORD-v2) | till receipt | 91,000 | **91,000** ✅ | 2.32 s |
+| `cord_v2_test_004.jpg` (real, CORD-v2) | till receipt | 174,600 | **174,600** ✅ | 2.68 s |
 
 **End-to-end verdicts** (photo PO + photo bill + photo receiving note → 5-agent graph):
 
 | Case | Vision count | Expected | Got |
 |---|---|---|---|
-| Set 1: team lunch, 10% service charge added | 4 of 4 thalis | Pay $60.00 / Hold $6.00 | **Pay $60.00 / Hold $6.00** ✅ |
+| Set 1: team lunch, 10% service charge added | 8 of 8 (thalis and chai) | Pay $60.00 / Hold $6.00 | **Pay $60.00 / Hold $6.00** ✅ |
 | Set 2: 6 chairs ordered, 4 received, $40 delivery fee | 4 of 6 chairs | Pay $480.00 / Hold $280.00 | **Pay $480.00 / Hold $280.00** ✅ |
 | Scenario B: 10 GPUs billed, dock scan shows 8 | 8 of 10 GPUs | Pay $8,000 / Hold $2,000 | **Pay $8,000 / Hold $2,000** ✅ |
 
-Auditor chat ("Why did you flag this?"): **1.41 s** median reply with Gemma 4. Verified live on the Space as well: the Cafe Lido set returned Pay $60 / Hold $6 in 4.1 s end to end.
+Auditor chat ("Why did you flag this?"): **1.03 s** median reply with Gemma 4. Verified live on the Space as well: the Cafe Lido set returned Pay $60 / Hold $6 in 4.1 s end to end.
 
 ### 2. Speed of a check
 
 | | Before | After |
 |---|---:|---:|
-| Audit graph alone, offline engine (Scenario A / B / C) | 15 / 22 / 24 ms | 11 / 21 / 17 ms |
-| Full UI run incl. streamed agent steps, offline (A / B / C) | 2.06 / 2.24 / 1.91 s | **0.86 / 0.95 / 0.82 s** |
+| Audit graph alone, offline engine (Scenario A / B / C) | 15 / 22 / 24 ms | 20 / 20 / 17 ms |
+| Full UI run incl. streamed agent steps, offline (A / B / C) | 2.06 / 2.24 / 1.91 s | **0.90 / 0.98 / 0.80 s** |
 | PO Parser node with Gemma 4 (clause check) | 0.72–0.77 s | **< 0.01 s** (now runs alongside the vision count) |
-| Whole graph with Gemma 4, photo set 1 / set 2 / Scenario B | 2.79 / 3.68 / 2.09 s | **1.90 / 2.21 / 1.08 s** |
+| Whole graph with Gemma 4, photo set 1 / set 2 / Scenario B | 2.79 / 3.68 / 2.09 s | **2.00 / 7.26* / 0.95 s** |
 
 ### 3. Page load
 
@@ -125,12 +125,60 @@ Lighthouse 12, desktop preset, one run per page against a local server, old and 
 | | Before | After |
 |---|---:|---:|
 | `ruff check .` | clean | clean |
-| Tests | 6 passing | 6 passing |
-| Line coverage of `app.py` | 83% | 83% |
+| Tests | 6 passing | 8 passing |
+| Line coverage of `app.py` | 83% | 84% |
 | Test suite wall time (with coverage) | 46.4 s | **24.8 s** |
-| `python app.py` → first HTTP 200 (median of 3) | 7.90 s | 7.88 s |
+| `python app.py` → first HTTP 200 (median of 3) | 7.90 s | 7.41 s |
+
+\* One slow vision reply from the provider in this run (the same set measured 2.21–2.65 s in the three runs before it). Latency from Hugging Face Inference Providers varies run to run; accuracy did not. A receiving note is now checked line by line (set 1 counts the thalis and the chai, not only the larger line), and the advisory clause check no longer holds up the verdict.
 
 Startup is dominated by importing Gradio (≈4.9 s) and LangGraph (≈1.1 s); the app's own module work is ≈0.8 s. The optional Gemini SDK is now imported only when that backend is used, which takes `google.genai` off the startup path.
+
+### 5. Tested like a user: 18 new bills
+
+**Round 1: 8 new bills.** Purchase orders, bills and receiving notes that were never used during development (printed and handwritten phone photos, a till receipt, typed PDFs, rupee amounts), each with a known correct answer, sent through the same upload → Execute path the UI uses, with Gemma 4 (five of them also uploaded by hand in the real UI).
+
+| Case | Correct answer | First run | After fixes |
+|---|---|---|---|
+| Unit price raised from $12 to $14 (50 cables) | Pay $600 / Hold $100 | ✅ (but the email claimed a $700 overcharge) | ✅ |
+| Same, with no receiving note uploaded | Pay $600 / Hold $100 | ❌ Pay $12 / Hold $688 (inspected the demo's dock scan) | ✅ "Not checked" |
+| Typed PDFs with "Grand Total" / "Amount Due" | Pay $750 / Hold $0 | ❌ billed twice, Hold $750 | ✅ |
+| 4 keyboards + 4 mice ordered, 2 mice missing | Pay $250 / Hold $50 | ❌ cleared (only the larger line was counted) | ✅ |
+| Rupee PDFs, Rs. 1,20,000 vs INR 1,25,000 | Pay 120,000 / Hold 5,000 | ❌ fell back to the demo's $500 / $600 | ✅ |
+| Till bill with a loyalty discount | Pay $180 / Hold $0 | ✅ | ✅ |
+| One line over its PO price, total under the PO | Pay $140 / Hold $50 | ❌ Pay $190 / Hold $0 | ✅ |
+| 12 mugs billed, 10 ordered and received | Pay $80 / Hold $16 | ✅ | ✅ |
+
+**3 / 8 → 8 / 8.** The dispute emails, agent logs and chat answers now state the same figures as the verdict. What was fixed:
+
+- Totals written as *Grand Total*, *Amount Due*, *Balance Due* or *Total* are read as totals, never as one more billed line.
+- Amounts in ₹ / Rs. / INR / € / £ (including lakh commas) and negative discount lines are read; invoice numbers keep their slashes (`SL/24-25/118`). A document with no number or amount no longer borrows the demo's PO #8842 or $500 / $600.
+- Unit prices written into an item name (`@ $12.00`, `(3 x $250.00)`) no longer stop the line from matching its PO line, so only the price difference is held.
+- Pay is the bill minus everything held, so an overpriced line is held even when the invoice total is under the PO cap.
+- A receiving note is counted line by line, and the demo's dock scan is never counted against a user's own PO.
+- **Execute waits** while an uploaded photo is still being read. Before, a quick click ran the check on the previous document.
+- Explanations name the actual problem ("billed $150 against $100", "not on the PO", "2 of 4 mice missing") and cite the PO's own clause.
+
+The 7th test, `test_user_bills_found_in_testing`, keeps each of these fixed.
+
+**Round 2: 10 edge cases.** A second batch aimed at harder situations:
+
+| Edge case | Correct answer | First run | After fixes |
+|---|---|---|---|
+| Partial invoice: 10 ordered, 8 received, 8 billed | Pay $1,200 / Hold $0 | ✅ | ✅ |
+| The same line billed twice | Pay $500 / Hold $500 | ✅ (explained only as "total exceeds payable") | ✅ "Billed again" |
+| Plain `.txt` files with a "Shipping:" line | Pay $400 / Hold $25 | ✅ | ✅ |
+| Nothing delivered at all | Pay $0 / Hold $900 | ✅ | ✅ |
+| 12 delivered, 10 ordered and billed | Pay $1,000 / Hold $0 | ✅ | ✅ |
+| Item names abbreviated on the invoice ("HP LJ Pro", "Toner 58A blk") | Pay $718 / Hold $0 | ✅ | ✅ |
+| Invoice photographed sideways, with a packing charge | Pay $30 / Hold $5 | ✅ | ✅ |
+| European numbers in PDFs (€1.200,00) | Pay 1,200 / Hold 50 | ❌ amounts unread, then "Cleared for payment" | ✅ |
+| Price raised and 2 of 10 missing on one line | Pay $800 / Hold $300 | ✅ (the email listed only $100 of the $300) | ✅ |
+| Invoice citing a different PO | Pay $0 / Hold all, needs review | ❌ paid in full | ✅ |
+
+Robustness checks on the same build: a landscape photo, a blank page and damaged files upload as "couldn't read" (no error text, server path or raw bytes in the editor); a **scanned PDF** with no text layer, a 6000×8000 photo, a transparent PNG and a renamed `.heic` photo are all read; an emptied PO editor no longer checks a user's invoice against the demo PO; the "What if the invoice was $450?" button is answered with exact arithmetic (Gemma had declined it); off-topic and "approve full payment" chat prompts are refused. The 8th test, `test_edge_case_bills_round_two`, covers each fix.
+
+**Known limit:** amounts are calculated correctly in any currency but always displayed with a `$` sign.
 
 ### What the optimisation pass changed
 
@@ -158,7 +206,7 @@ flowchart LR
 ```
 
 1. **PO Parser** reads the purchase order (typed, PDF via PyMuPDF, or a photo read by Gemma 4), finds the authorized amount and line items, and retrieves the governing clause (e.g. *Non-Billable Extras*, *Short-Shipment*) with section-aware chunking and hashed cosine similarity. An advisory one-line clause check by the model runs in the background.
-2. **Vision Agent** sends the goods-receipt image to Gemma 4 and asks for the delivered count and, if units are missing, a box around them. Missing stock gets a red box drawn on the scan (`MISSING INVENTORY: 2 OF 10 UNITS`). **Chaos Mode** feeds it a tampered result to show that the hold is real logic, not a script.
+2. **Vision Agent** sends the goods-receipt image to Gemma 4 and asks for the delivered count of every PO line and, if units are missing, a box around them. Missing stock gets a red box drawn on the scan (`MISSING INVENTORY: 2 OF 10 UNITS`). **Chaos Mode** feeds it a tampered result to show that the hold is real logic, not a script.
 3. **Invoice Parser** extracts the invoice number, line items, tax and total.
 4. **Auditor** matches every invoice line against the PO and the delivered count. Payable = authorized amount minus the value of undelivered units; anything above it is held. It drafts a clause-cited dispute email and writes an fsync'd record to `workspace/receipts/overlord_audit.jsonl`.
 5. **Supervisor** recomputes the variance from the raw figures (`600 - 500 = 100. Calculations mathematically verified.`). If the Auditor disagrees, the Supervisor overrides it and routes to human review.
@@ -227,7 +275,7 @@ docker run --rm -p 7860:7860 --env-file .env overlord
 ## Testing and benchmarks
 
 ```bash
-OVERLORD_LIVE_LLM=0 python -m pytest -q      # 6 tests, offline, ~20 s
+OVERLORD_LIVE_LLM=0 python -m pytest -q      # 8 tests, offline, ~20 s
 ruff check .
 python bench/benchmark.py                    # code quality, boot, page weight, engine speed
 python bench/benchmark.py --live             # + Gemma 4 accuracy and latency on samples/ (needs a Hugging Face login)
