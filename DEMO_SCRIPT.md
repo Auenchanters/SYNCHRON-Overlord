@@ -23,6 +23,7 @@ make that click as you say "Meet Project Overlord". Use `http://localhost:7860/?
 > **$500.00** locks green on the PO, **$600.00** and the unauthorized **Setup Fee** pulse red on the Invoice, and **TOTAL RECOVERED** flashes **$100.00**."
 
 Telemetry line to point at: `[SUPERVISOR AGENT] 600 - 500 = 100. Calculations mathematically verified. Routing to Dispute.`
+The verdict lands right under the run bar: **Pay $500.00 · Hold $100.00** with the DISPUTE stamp. No scrolling needed.
 
 ### [1:50 – 2:25] Act 4: XAI Chatbot + Vision Bounding Box
 1. Click **Why did you flag this?** in the XAI chatbot.

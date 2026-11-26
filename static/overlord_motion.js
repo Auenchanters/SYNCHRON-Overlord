@@ -304,17 +304,25 @@ function rise(targets, vars = {}) {
   );
 }
 
-/* The one authored moment: the stamp is pressed onto the verdict, the card takes the hit,
-   then the finding rises. It plays when the verdict is on screen, so it is never spent off-screen. */
+/* The one authored moment: the Pay and Hold figures count up, the stamp is pressed onto the card,
+   the card takes the hit, then the reason rises. It plays when the verdict is on screen. */
 function playVerdict(verdict) {
   verdictTl?.kill();
   verdictTrigger?.kill();
   if (reduced()) return;
   const stamp = verdict.querySelector(".ov-stamp");
+  const figures = verdict.querySelectorAll(".ov-fig");
   const lines = verdict.querySelectorAll(".alert-title, .alert-body");
   verdictTl = gsap
     .timeline({ paused: true })
-    .fromTo(stamp, { autoAlpha: 0, scale: 1.9, rotation: -9 }, { autoAlpha: 1, scale: 1, rotation: -2, duration: 0.3, ease: "power4.in" })
+    .fromTo(figures, { autoAlpha: 0, y: "0.3em" }, { autoAlpha: 1, y: 0, duration: T.dur.considered, stagger: T.stagger.line, clearProps: "opacity,visibility,transform" });
+  verdict.querySelectorAll(".ov-fig-value").forEach((el, i) => {
+    const target = parseFloat(el.textContent.replace(/[^0-9.]/g, "")) || 0;
+    const n = { v: 0 };
+    verdictTl.to(n, { v: target, duration: T.dur.considered * 1.5, ease: T.ease.standard, onUpdate: () => { el.textContent = money(n.v); } }, i * T.stagger.line);
+  });
+  verdictTl
+    .fromTo(stamp, { autoAlpha: 0, scale: 1.9, rotation: -9 }, { autoAlpha: 1, scale: 1, rotation: -2, duration: 0.3, ease: "power4.in" }, 0.35)
     .addLabel("impact")
     .fromTo(verdict, { y: 0 }, { y: 3, duration: 0.06, ease: "power1.out", yoyo: true, repeat: 1, clearProps: "transform" }, "impact")
     .fromTo(
@@ -368,7 +376,7 @@ function trackRun(cells) {
     run.active = false;
     run.clicked = 0;
     const secs = ((performance.now() - run.started) / 1000).toFixed(1);
-    help.innerHTML = `Checked in ${secs} seconds <span>· run again any time</span>`;
+    help.innerHTML = `Checked in ${secs} seconds`;
     barTo(1);
     gsap.to(track, { autoAlpha: 0, duration: T.dur.considered, delay: 0.9 });
   }
@@ -397,7 +405,8 @@ function onDashboardChange() {
   }
 
   const verdict = document.querySelector(".ov-verdict--alert, .ov-verdict--ok");
-  const verdictSig = verdict ? verdict.textContent.trim() : "";
+  // Key on the reason, not the figures: the count-up rewrites the figures, which must not read as a new verdict.
+  const verdictSig = verdict ? verdict.className + (verdict.querySelector(".ov-verdict-why")?.textContent ?? "").trim() : "";
   if (verdict && verdictSig !== seen.verdict) playVerdict(verdict);
   seen.verdict = verdictSig;
 
@@ -422,6 +431,8 @@ function onDashboardChange() {
   if (changed.length && seen.footing.length) rise(changed, { stagger: T.stagger.item });
   seen.footing = texts;
   trackRun(texts);
+  // The switch lives in the header, which Gradio re-renders on every run, so re-sync its state.
+  syncThemeToggle();
 
   const dispatch = document.querySelector(".ov-dispatch-success");
   const dispatchSig = dispatch ? dispatch.textContent : "";
@@ -488,10 +499,3 @@ document.addEventListener("click", (e) => {
 
 startIntro();
 watchDashboard();
-// The switch is rendered by Gradio after this module runs; sync it once it exists.
-new MutationObserver((_, obs) => {
-  if (document.getElementById("ov-theme-toggle")) {
-    syncThemeToggle();
-    obs.disconnect();
-  }
-}).observe(document.body, { childList: true, subtree: true });

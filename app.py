@@ -1670,7 +1670,9 @@ footer { display: none !important; }
     padding: 24px 20px !important; gap: 14px !important;
     position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto;
 }
-.ov-main { padding: 24px 28px 40px !important; gap: 20px !important; min-width: 0; }
+.ov-main { padding: 20px 28px 40px !important; gap: 14px !important; min-width: 0; }
+/* Gradio pads every HTML block by 10px 12px; at the top level that added ~20px between sections and inset the verdict. */
+.ov-main > .block > .html-container { padding: 0 !important; }
 
 .ov-sidebar-brand .title { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; color: var(--pad-ink); }
 .ov-sidebar-brand .sub { font-size: 13.5px; color: var(--pad-ink-2); margin-top: 2px; }
@@ -1718,10 +1720,13 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 .gradio-container button[role="tab"][aria-selected="true"] { color: var(--pad-ink) !important; font-weight: 600 !important; border-color: var(--pad-green) !important; }
 
 /* Header: title on the left, the money figure on the right */
-.ov-topbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 16px; border-bottom: 2px solid var(--pad-ink); }
+.ov-topbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 12px; border-bottom: 2px solid var(--pad-ink); }
 .ov-brand-title { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--pad-ink); }
-.ov-brand-sub { margin: 4px 0 0; font-size: 15px; color: var(--pad-ink-2); max-width: 70ch; }
+.ov-brand-sub { margin: 4px 0 0; font-size: 15px; color: var(--pad-ink-2); max-width: 90ch; }
 .ov-impact-box { text-align: right; }
+/* The theme switch sits in the header so it is reachable without scrolling, on desktop and phone. */
+.ov-topbar-side { display: flex; align-items: flex-end; gap: 28px; }
+.ov-topbar .ov-theme-toggle { width: auto; margin-bottom: 6px; }
 .ov-impact-label { font-size: 13px; color: var(--pad-ink-2); }
 .ov-impact-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--pad-ink); }
 .ov-impact-box--flash .ov-impact-value { color: var(--pad-red); animation: ov-ink 600ms cubic-bezier(0.16, 1, 0.3, 1); }
@@ -1783,6 +1788,22 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 .alert-title { margin-top: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--pad-ink); font-variant-numeric: tabular-nums; }
 .alert-body { margin-top: 4px; font-size: 15px; color: var(--pad-ink); max-width: 70ch; }
 .findings-idle { color: var(--pad-ink-2); font-size: 15px; }
+/* Verdict at the top: two poster-size figures, then the stamp and the reason beside them. */
+.ov-verdict--alert, .ov-verdict--ok { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 12px 40px; align-items: center; padding: 18px 22px; }
+.ov-verdict-figures { display: flex; gap: 36px; }
+.ov-fig { display: flex; flex-direction: column; }
+.ov-fig-label { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pad-ink-2); }
+.ov-fig-value { font-size: clamp(34px, 3.4vw, 52px); font-weight: 700; line-height: 1.05; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.ov-fig-sub { font-size: 13px; color: var(--pad-ink-2); }
+.ov-fig--pay .ov-fig-value { color: var(--pad-green); }
+.ov-fig--hold .ov-fig-value { color: var(--pad-red); }
+.ov-fig--zero .ov-fig-value { color: var(--pad-ink-3); }
+.ov-verdict-why .alert-title { margin-top: 8px; }
+.ov-verdict-why .alert-body { max-width: 62ch; }
+@media (max-width: 900px) {
+    .ov-verdict--alert, .ov-verdict--ok { grid-template-columns: 1fr; }
+    .ov-verdict-figures { gap: 24px; }
+}
 
 .ov-section-label { font-size: 15px; font-weight: 700; color: var(--pad-ink); margin: 6px 0 2px; }
 .ov-section-hint { font-size: 13px; font-weight: 400; color: var(--pad-ink-2); }
@@ -1809,7 +1830,7 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 /* Run bar: the primary action, full width under the header */
 .ov-runbar {
     background: var(--pad-sheet) !important; border: 2px solid var(--pad-ink) !important; border-radius: 4px !important;
-    padding: 14px 16px !important; gap: 16px !important; align-items: flex-end !important;
+    padding: 10px 14px !important; gap: 16px !important; align-items: flex-end !important;
 }
 .ov-runbar > .ov-run-col { background: transparent !important; border: none !important; }
 .ov-run-col { gap: 6px !important; justify-content: flex-end !important; }
@@ -1851,7 +1872,7 @@ html:not(.ov-has-run) .ov-run-hint:not(:disabled) { animation: ov-ring 2.4s cubi
     .ov-footing th { padding: 8px 8px 2px; }
     .ov-footing td { font-size: 16px; padding: 0 8px 10px; }
 }
-/* Dark mode: the same ledger at night. Opt-in via the sidebar switch (html[data-ov-theme="dark"]). */
+/* Dark mode: the same ledger at night. Opt-in via the header switch (html[data-ov-theme="dark"]). */
 html[data-ov-theme="dark"] .ov-send-btn, html[data-ov-theme="dark"] .ov-send-btn button { color: #1A0E0C !important; }
 html[data-ov-theme="dark"] .ov-send-btn:hover, html[data-ov-theme="dark"] .ov-send-btn button:hover { background: #F6A49B !important; }
 html[data-ov-theme="dark"] .ov-gr-image img { filter: brightness(0.9); }
@@ -1892,9 +1913,14 @@ def render_topbar_html(
         <h1 class="ov-brand-title">Project Overlord</h1>
         <p class="ov-brand-sub">{escape(status_text)}</p>
       </div>
-      <div class="{cls}">
-        <div class="ov-impact-label">Total recovered</div>
-        <div class="ov-impact-value">${recovered_amount:,.2f}</div>
+      <div class="ov-topbar-side">
+        <button type="button" id="ov-theme-toggle" class="ov-theme-toggle" role="switch" aria-checked="false">
+          <span>Dark mode</span><span class="ov-theme-track" aria-hidden="true"></span>
+        </button>
+        <div class="{cls}">
+          <div class="ov-impact-label">Total recovered</div>
+          <div class="ov-impact-value">${recovered_amount:,.2f}</div>
+        </div>
       </div>
     </div>
     """
@@ -2033,26 +2059,55 @@ def render_vision_badge_html(confidence: str = "", detail: str = "Not inspected 
     return f'<div class="{cls}"><span>{head}</span><span class="sub">{escape(detail)}</span></div>'
 
 
-def render_findings_html(state: str = "idle", variance: float = 100.0, reason: str = "", chaos_triggered: bool = False) -> str:
+def _verdict_figures(pay: float, hold: float, billed: float, pay_note: str = "", hold_note: str = "") -> str:
+    hold_cls = "ov-fig ov-fig--hold" if hold > 0 else "ov-fig ov-fig--hold ov-fig--zero"
+    note = pay_note or f"of ${billed:,.2f} billed"
+    return (
+        '<div class="ov-verdict-figures">'
+        f'<div class="ov-fig ov-fig--pay"><span class="ov-fig-label">Pay</span><span class="ov-fig-value">${pay:,.2f}</span>'
+        f'<span class="ov-fig-sub">{escape(note)}</span></div>'
+        f'<div class="{hold_cls}"><span class="ov-fig-label">Hold</span><span class="ov-fig-value">${hold:,.2f}</span>'
+        f'<span class="ov-fig-sub">{escape(hold_note or ("disputed with the vendor" if hold > 0 else "nothing disputed"))}</span></div>'
+        "</div>"
+    )
+
+
+def render_findings_html(
+    state: str = "idle",
+    variance: float = 100.0,
+    reason: str = "",
+    chaos_triggered: bool = False,
+    billed: float = 0.0,
+    payable: float | None = None,
+) -> str:
+    """The verdict as the page's answer: how much to pay, how much to hold, and why."""
     if state == "idle":
-        return '<div class="ov-verdict findings-idle">No verdict yet. Choose a case in the bar at the top, then press <strong>Execute 3-Way Match</strong>.</div>'
+        return '<div class="ov-verdict findings-idle">No verdict yet. Press <strong>Execute 3-Way Match</strong> and the amount to pay appears here.</div>'
     if state == "scanning":
         return '<div class="ov-verdict findings-idle">Checking the three documents against each other…</div>'
+    # Same rule as the UPI checkout (_settlement_amount): pay the smaller of the verified payable and the bill.
+    pay = round(min(payable if payable is not None else billed - variance, billed), 2) if billed else 0.0
     if not chaos_triggered and variance <= 0:
         return (
-            '<div class="ov-verdict ov-verdict--ok"><span class="ov-stamp">Cleared</span>'
+            '<div class="ov-verdict ov-verdict--ok">'
+            + _verdict_figures(pay, 0.0, billed)
+            + '<div class="ov-verdict-why"><span class="ov-stamp">Cleared</span>'
             '<div class="alert-title">Cleared for payment: $0.00 difference</div>'
-            '<div class="alert-body">Every billed line and every delivered unit matches the purchase order.</div></div>'
+            '<div class="alert-body">Every billed line and every delivered unit matches the purchase order.</div></div></div>'
         )
-    if chaos_triggered and variance > 0:
-        stamp, headline = "Payment held", f"Vision alert and ${variance:,.2f} overcharge"
-    elif chaos_triggered:
-        stamp, headline = "Payment held", "Vision alert: delivery could not be verified"
+    if chaos_triggered:
+        # Delivery could not be verified, so nothing is released until someone checks the dock.
+        pay, note, hold_note = 0.0, "until the delivery is checked by hand", "delivery not verified"
+        stamp = "Payment held"
+        headline = f"Vision alert and ${variance:,.2f} overcharge" if variance > 0 else "Vision alert: delivery could not be verified"
     else:
-        stamp, headline = "Dispute", f"Discrepancy detected: ${variance:,.2f} overcharge"
+        note, hold_note, stamp, headline = "", "", "Dispute", f"Discrepancy detected: ${variance:,.2f} overcharge"
+    hold = round(max(billed - pay, 0.0), 2) if billed else variance
     return (
-        f'<div class="ov-verdict ov-verdict--alert"><span class="ov-stamp">{stamp}</span>'
-        f'<div class="alert-title">{headline}</div><div class="alert-body">{escape(reason)}</div></div>'
+        '<div class="ov-verdict ov-verdict--alert">'
+        + _verdict_figures(pay, hold, billed, note, hold_note)
+        + f'<div class="ov-verdict-why"><span class="ov-stamp">{stamp}</span>'
+        f'<div class="alert-title">{headline}</div><div class="alert-body">{escape(reason)}</div></div></div>'
     )
 
 
@@ -2220,7 +2275,14 @@ def run_audit(
                             variance_state="alert" if flagged else "neutral",
                         ),
                         "\n".join(cumulative_logs),
-                        render_findings_html("done" if (is_done or flagged) else "scanning", variance=variance, reason=disc.get("reason", ""), chaos_triggered=chaos_hit),
+                        render_findings_html(
+                            "done" if (is_done or flagged) else "scanning",
+                            variance=variance,
+                            reason=disc.get("reason", ""),
+                            chaos_triggered=chaos_hit,
+                            billed=inv_amt,
+                            payable=float(disc.get("payable_cap", po_amt)),
+                        ),
                         snapshot.get("dispute_email", ""),
                         render_po_html_from_text(live_po_text, highlight=has_po),
                         render_invoice_html_from_text(
@@ -2301,8 +2363,6 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                 )
                 + '<div class="ov-status-line"><span class="ov-dot"></span>Clause search ready</div>'
                 "</div>"
-                '<button type="button" id="ov-theme-toggle" class="ov-theme-toggle" role="switch" aria-checked="false">'
-                '<span>Dark mode</span><span class="ov-theme-track" aria-hidden="true"></span></button>'
                 '<div class="ov-sidebar-footer">Agents: PO parser, Vision, Invoice parser, Auditor, Supervisor.<br>'
                 "Every result is written to an append-only audit ledger.</div>"
             )
@@ -2325,6 +2385,8 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                     gr.HTML('<p class="ov-run-help" aria-live="polite">Run the check <span>· about 2 seconds</span></p><div class="ov-run-progress" aria-hidden="true"><i></i></div>')
                     run_btn = gr.Button("Execute 3-Way Match", variant="primary", size="lg", elem_classes=["ov-exec-btn", "ov-run-hint"])
 
+            # The answer to "do I pay this, and how much?" comes first, before the evidence.
+            audit_findings_html = gr.HTML(value=render_findings_html("idle"), elem_classes=["ov-verdict-slot"])
             metrics_bar_html = gr.HTML(value=render_metrics_bar_html())
 
             with gr.Row(elem_classes=["overlord-row", "ov-docs-row"]):
@@ -2366,10 +2428,9 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                             inv_text_box = gr.Textbox(label="Vendor invoice text", value=SCENARIOS[DEFAULT_SCENARIO]["inv_text"], lines=11, elem_classes=["ov-doc-editor"])
 
             with gr.Tabs():
-                with gr.Tab("Verdict and actions"):
+                with gr.Tab("Act on the verdict"):
                     with gr.Row(elem_classes=["overlord-row"]):
                         with gr.Column(scale=1, elem_classes=["overlord-panel-col"]):
-                            audit_findings_html = gr.HTML(value=render_findings_html("idle"))
                             gr.HTML('<div class="ov-section-label">Dispute email <span class="ov-section-hint">Drafted automatically. Edit before sending.</span></div>')
                             dispute_email = gr.Textbox(
                                 show_label=False,

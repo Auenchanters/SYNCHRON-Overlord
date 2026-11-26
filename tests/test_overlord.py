@@ -48,6 +48,8 @@ def test_dynamic_edited_invoice_parsing():
     # The Goods Receipt is what separates a 3-Way from a 2-Way match.
     three_way = list(app.run_audit(SCENARIO_B, "3-Way Match"))[-1]
     assert "Discrepancy detected: $2,000.00 overcharge" in three_way[4]
+    assert "Pay</span><span class=\"ov-fig-value\">$8,000.00" in three_way[4]
+    assert "Hold</span><span class=\"ov-fig-value\">$2,000.00" in three_way[4]
     assert "10000 - 8000 = 2000. Calculations mathematically verified." in three_way[3]
     assert three_way[9]["payable"] == 8000.00
     two_way = list(app.run_audit(SCENARIO_B, "2-Way Match"))[-1]
