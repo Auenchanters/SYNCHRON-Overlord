@@ -34,7 +34,7 @@ python -m pip install -r requirements.txt --quiet
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  echo "Created .env from .env.example - add GOOGLE_API_KEY and set OVERLORD_LIVE_LLM=1 for live Gemini."
+  echo "Created .env from .env.example - add HF_TOKEN to turn on Gemma 4."
 fi
 
 export GRADIO_SERVER_PORT="$PORT"

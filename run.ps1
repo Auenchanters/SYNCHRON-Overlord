@@ -62,7 +62,7 @@ if ($Test) {
 
 if (-not (Test-Path (Join-Path $PSScriptRoot ".env"))) {
   Copy-Item .env.example .env
-  Write-Host "Created .env from .env.example - add GOOGLE_API_KEY and set OVERLORD_LIVE_LLM=1 for live Gemini." -ForegroundColor Yellow
+  Write-Host "Created .env from .env.example - add HF_TOKEN to turn on Gemma 4." -ForegroundColor Yellow
 }
 
 $env:GRADIO_SERVER_PORT = "$Port"

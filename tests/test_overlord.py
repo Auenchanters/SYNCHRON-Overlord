@@ -180,13 +180,12 @@ def test_mega_update_modules():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    client = TestClient(app.gr.mount_gradio_app(FastAPI(), app.demo, path="/", head=app.OVERLORD_HEAD))
-    assert "overlord_motion.js" in client.get("/config").text
+    client = TestClient(app.gr.mount_gradio_app(FastAPI(**app.APP_KWARGS), app.demo, path="/", head=app.OVERLORD_HEAD))
+    config = client.get("/config", headers={"Accept-Encoding": "gzip"})
+    assert "overlord_motion.js" in config.text and config.headers.get("content-encoding") == "gzip"
     script = app.MOTION_SCRIPT_URL.split("?")[0]
-    for url in (script, script.replace("overlord_motion.js", "vendor/three.module.min.js"),
-                script.replace("overlord_motion.js", "vendor/three.core.js"),
-                script.replace("overlord_motion.js", "vendor/gsap/index.js"),
-                script.replace("overlord_motion.js", "vendor/gsap/ScrollTrigger.js")):
+    for url in (script, script.replace("overlord_motion.js", "vendor/three.min.js"),
+                script.replace("overlord_motion.js", "vendor/gsap.min.js")):
         resp = client.get(url)
         assert resp.status_code == 200 and "javascript" in resp.headers["content-type"], url
 

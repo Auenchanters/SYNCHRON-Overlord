@@ -5,10 +5,11 @@ Production-Grade Multi-Way AP Reconciliation Platform
 Core Capabilities:
   - Real Document & PDF Ingestion: PyMuPDF (.pdf/.txt) + Gyansutr RAG clause indexing
   - Dynamic Line-Item Reconciliation: Detects unauthorized fees, rate inflation & short-delivery
-  - Real Image Preprocessing: PIL inspection/resizing + Gemini Vision (3.5 Flash) / stage-safe fallback
+  - Photo & handwriting reading: Gemma 4 (google/gemma-4-26B-A4B-it) via Hugging Face Inference Providers,
+    with a deterministic offline fallback (Gemini optional)
   - LangGraph 5-Node StateGraph: PO Parser -> Vision Agent -> Invoice Parser -> Auditor -> Supervisor
-  - Mission Control UI (Gradio 6.32.0): XAI Visual Diffing, Live Edit/PDF Upload, XAI Chatbot,
-    Chaos Mode Switch, Send Dispute Kill Shot, and Immutable JSONL Audit Ledger & Export
+  - Gradio 6.32 workspace on Astryx Neutral tokens: inline mismatch flags, PDF/photo upload, grounded
+    auditor chat, Chaos Mode, dispute email, UPI checkout, and an append-only JSONL audit ledger
 
 Run:
     python app.py
@@ -41,10 +42,10 @@ from urllib.parse import quote
 
 import gradio as gr
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 from langgraph.graph import END, START, StateGraph
 from PIL import Image, ImageDraw, ImageFont
+from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
 
 load_dotenv()
 
@@ -171,10 +172,7 @@ HEADING_PATTERN = re.compile(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Serverless hosts (Vercel sets VERCEL=1) only allow writes under the temp dir.
-WORKSPACE_DIR = os.getenv("OVERLORD_WORKSPACE_DIR") or (
-    os.path.join(tempfile.gettempdir(), "overlord_workspace") if os.getenv("VERCEL") else os.path.join(BASE_DIR, "workspace")
-)
+WORKSPACE_DIR = os.getenv("OVERLORD_WORKSPACE_DIR") or os.path.join(BASE_DIR, "workspace")
 AUDIT_RECEIPTS_PATH = os.path.join(WORKSPACE_DIR, "receipts", "overlord_audit.jsonl")
 CERT_EXPORT_DIR = os.path.join(WORKSPACE_DIR, "exports")
 
@@ -779,7 +777,7 @@ def draw_vision_xai_bounding_box(
 
 
 # ==============================================================================
-# 5. LANGGRAPH STATE & 4-NODE 3-WAY MATCH WORKFLOW
+# 5. LANGGRAPH STATE & 5-NODE 3-WAY MATCH WORKFLOW
 # ==============================================================================
 
 class OverlordState(TypedDict):
@@ -796,6 +794,7 @@ class OverlordState(TypedDict):
     gr_data: dict[str, Any]
     invoice_data: dict[str, Any]
     status: str
+    clause_check: Any  # Future of the advisory PO clause note; the Invoice Parser collects it
     step_logs: list[str]
     logs: Annotated[list[str], operator.add]
 
@@ -837,10 +836,13 @@ def llm_label() -> str:
     return {"gemma": "Gemma 4", "gemini": "Gemini"}.get(llm_backend() or "", "offline engine")
 
 
-def _build_genai_client() -> genai.Client | None:
+def _build_genai_client() -> Any:
     if llm_backend() != "gemini":
         return None
     try:
+        from google import genai  # imported on demand: the optional Gemini backend costs ~0.3 s of startup
+        from google.genai import types
+
         return genai.Client(api_key=_gemini_key(), http_options=types.HttpOptions(timeout=12000))
     except Exception:
         return None
@@ -888,6 +890,8 @@ def _call_llm_safe(
             return None
         primary = model_name or os.getenv("GEMINI_PRO_MODEL", "gemini-3.5-flash").strip()
         fallback = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite").strip()
+        from google.genai import types
+
         contents: Any = [prompt, types.Part.from_bytes(data=image_bytes, mime_type="image/png")] if image_bytes else prompt
         config = (
             types.GenerateContentConfig(
@@ -959,17 +963,21 @@ def gemini_vision_inspect(image_bytes: bytes | None, item: str, ordered: int) ->
         return None
 
 
+_ADVISORY_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="overlord-advisory")
+
+
 def po_parser_node(state: OverlordState) -> dict[str, Any]:
-    """Node 1 (PO Parser): Real text/PDF parsing + Gyansutr RAG clause indexing + Gemini verification."""
+    """Node 1 (PO Parser): Real text/PDF parsing + Gyansutr RAG clause indexing + model clause check."""
     po_data = parse_po_document(state.get("po_text", ""))
-    gemini_note = _call_llm_safe(
+    # Advisory note only (the regex + RAG result drives the audit), so it runs alongside the vision count
+    # instead of in front of it. _call_llm_safe caps it at 2.5 s; the Invoice Parser collects it.
+    clause_check = _ADVISORY_POOL.submit(
+        _call_llm_safe,
         "In 1 short sentence, state the PO number, authorized amount and any clause restricting extra "
         f"charges or undelivered units, from:\n{state.get('po_text', '')[:1500]}",
         model_name=os.getenv("GEMINI_PRO_MODEL", "gemini-3.5-flash"),
-        max_wait_s=2.5,  # advisory note only; the regex + RAG result above already drives the audit
-    )
-    if gemini_note:
-        po_data["gemini_summary"] = gemini_note
+        max_wait_s=2.5,
+    ) if llm_backend() else None
     logs = [
         _log("INIT :: Booting Overlord Financial Defense Engine (Gyansutr RAG + LangGraph)..."),
         _log(
@@ -981,9 +989,7 @@ def po_parser_node(state: OverlordState) -> dict[str, Any]:
             f"(cosine {po_data['retrieved_score']:.2f})"
         ),
     ]
-    if gemini_note:
-        logs.append(_log(f"[{llm_label().upper()} CLAUSE CHECK] {gemini_note[:160]}"))
-    return {"po_data": po_data, "step_logs": logs, "logs": logs}
+    return {"po_data": po_data, "clause_check": clause_check, "step_logs": logs, "logs": logs}
 
 
 def vision_agent_node(state: OverlordState) -> dict[str, Any]:
@@ -1090,6 +1096,10 @@ def invoice_parser_node(state: OverlordState) -> dict[str, Any]:
             f"{tax_note} | Billed Total: ${inv_data['billed_total']:,.2f}"
         ),
     ]
+    clause_check = state.get("clause_check")
+    note = clause_check.result() if clause_check else None
+    if note:
+        logs.insert(0, _log(f"[{llm_label().upper()} CLAUSE CHECK] {note[:160]}"))
     return {"invoice_data": inv_data, "step_logs": logs, "logs": logs}
 
 
@@ -1683,7 +1693,7 @@ OVERLORD_HEAD += """<style>
     --pad-ink-3: #6A6A6A;        /* --color-icon-secondary */
     --pad-accent: #1B1B1B;       /* --color-accent: Neutral's primary buttons are near-black */
     --pad-on-accent: #FFFFFF;
-    --pad-green: #2F7D33;        /* --color-text-success */
+    --pad-green: #2B7330;        /* --color-text-success, darkened to 5:1 on the green tint */
     --pad-green-fill: #198100;   /* --color-success */
     --pad-green-tint: #E3F1E2;   /* --color-success-muted, lightened for large surfaces */
     --pad-red: #C0262C;          /* --color-text-error */
@@ -1742,7 +1752,7 @@ _PAD = {
     "ink_2": "#474747",
     "ink_3": "#6A6A6A",
     "accent": "#1B1B1B",
-    "green": "#2F7D33",
+    "green": "#2B7330",
     "green_tint": "#E3F1E2",
     "red": "#C0262C",
     "red_tint": "#FFE7E4",
@@ -1802,7 +1812,7 @@ OVERLORD_THEME = gr.themes.Base(
     primary_hue="neutral",
     neutral_hue="neutral",
     radius_size="lg",
-    font=[gr.themes.GoogleFont("Figtree"), "system-ui", "sans-serif"],
+    font=["Figtree", "system-ui", "sans-serif"],  # loaded once by the <link> in OVERLORD_HEAD
     font_mono=["ui-monospace", "SF Mono", "Consolas", "monospace"],
 ).set(
     # Same values in both schemes; dark mode is opt-in through html[data-ov-theme=dark] in OVERLORD_HEAD.
@@ -2343,13 +2353,14 @@ def run_audit(
         "gr_data": {},
         "invoice_data": {},
         "status": "running",
+        "clause_check": None,
         "step_logs": [],
         "logs": [],
     }
 
     snapshot: dict[str, Any] = dict(initial_state)
     cumulative_logs: list[str] = []
-    step_delay = 0.15  # ~16 telemetry lines -> ~2.4s on stage, inside the '< 3 SEC' audit claim
+    step_delay = 0.06  # paces ~14 telemetry lines (~0.8 s) so each agent step is visible without slowing the verdict
     emitted = 0
     last_payload = None
 
@@ -2552,7 +2563,7 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
                     scale=2,
                 )
                 with gr.Column(scale=2, min_width=260, elem_classes=["ov-run-col"]):
-                    gr.HTML('<p class="ov-run-help" aria-live="polite">Run the check <span>· about 2 seconds</span></p><div class="ov-run-progress" aria-hidden="true"><i></i></div>')
+                    gr.HTML('<p class="ov-run-help" aria-live="polite">Run the check <span>· about a second offline, a few seconds with Gemma 4</span></p><div class="ov-run-progress" aria-hidden="true"><i></i></div>')
                     run_btn = gr.Button("Execute 3-Way Match", variant="primary", size="lg", elem_classes=["ov-exec-btn", "ov-run-hint"])
 
             # The answer to "do I pay this, and how much?" comes first, before the evidence.
@@ -2818,19 +2829,16 @@ with gr.Blocks(title="Project Overlord: three-way invoice check", fill_width=Tru
         _sl.change(fn=calculate_cfo_roi, inputs=[cfo_invoices_slider, cfo_avg_val_slider, cfo_error_rate_slider], outputs=[cfo_roi_md], queue=False)
 
 
-# ==============================================================================
-# 11. DONUT CHALLENGE PREP (Pre-built Commented-Out LangGraph Nodes)
-# ==============================================================================
+class _GzipPages(GZipMiddleware):
+    """Gradio's Brotli layer only compresses paths with a file extension, so "/" (~350 KB) and /config went out raw."""
 
-# def translate_dispute_email(state: OverlordState, language: str = "Spanish") -> dict[str, Any]:
-#     """Donut Challenge Node 1: Translate the drafted dispute email to Spanish."""
-#     return {"dispute_email": state["dispute_email"].replace("Dispute -", "Disputa -")}
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and "." not in scope.get("path", "").rsplit("/", 1)[-1]:
+            return await super().__call__(scope, receive, send)
+        return await self.app(scope, receive, send)
 
-# def calculate_tax(state: OverlordState) -> dict[str, Any]:
-#     """Donut Challenge Node 2: 4-Way Match 10% tax validation node (also live via sidebar toggle)."""
-#     inv = dict(state.get("invoice_data") or {})
-#     inv["tax_amount"] = round(float(inv.get("billed_total", 600.0)) * 0.10, 2)
-#     return {"invoice_data": inv}
+
+APP_KWARGS = {"middleware": [Middleware(_GzipPages, minimum_size=1024)]}
 
 
 if __name__ == "__main__":
@@ -2842,4 +2850,5 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         ssr_mode=False,
+        app_kwargs=APP_KWARGS,
     )

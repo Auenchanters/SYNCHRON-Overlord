@@ -2,10 +2,9 @@
 // - Landing page that dissolves into wind-blown dust (three.js) and doubles as the loading screen.
 // - Dashboard motion on state changes (GSAP timelines + ScrollTrigger), timed with Arc's motion tokens.
 // All libraries are vendored in ./vendor so the intro works without venue Wi-Fi.
-import * as THREE from "./vendor/three.module.min.js";
-// GSAP's own ES module files (the UMD build cannot run inside a module: it assigns to window).
-import { gsap } from "./vendor/gsap/index.js";
-import { ScrollTrigger } from "./vendor/gsap/ScrollTrigger.js";
+// three.js (~570 KB) is imported only when the intro plays, so ?intro=0 and reduced motion never download it.
+// GSAP core + ScrollTrigger, bundled and minified from GSAP's ES module files (the UMD build assigns to window).
+import { gsap, ScrollTrigger } from "./vendor/gsap.min.js";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -202,7 +201,7 @@ void main() {
   gl_FragColor = vec4(vColor, vAlpha);
 }`;
 
-function runDust(intro) {
+function runDust(intro, THREE) {
   const W = window.innerWidth, H = window.innerHeight;
   const pixels = rasterizeIntro(intro, W, H);
   const { pos, col, size, delay, rnd } = buildParticles(pixels, W, H);
@@ -249,6 +248,9 @@ function startIntro() {
   if (new URLSearchParams(location.search).get("intro") === "0") return;
   const intro = buildIntro();
   const reveal = revealIntro(intro);
+  // Fetch three.js while the landing page is read; the dust needs it only after the first click.
+  const three = reduced() ? Promise.reject(new Error("reduced motion")) : import("./vendor/three.min.js");
+  three.catch(() => {});
   const ready = dashboardReady();
   let leaving = false;
 
@@ -268,7 +270,7 @@ function startIntro() {
     reveal?.progress(1);
     try {
       if (reduced()) throw new Error("reduced motion");
-      await runDust(intro);
+      await runDust(intro, await three);
     } catch {
       await fadeIntro(intro);
     }

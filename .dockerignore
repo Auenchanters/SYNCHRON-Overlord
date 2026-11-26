@@ -14,8 +14,7 @@ workspace/receipts/*
 workspace/exports/*
 !workspace/receipts/.gitkeep
 !workspace/exports/.gitkeep
-handoff.md
-DEMO_SCRIPT.md
-SUBMISSION.md
 *.md
 !README.md
+docs/
+.claude/

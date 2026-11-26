@@ -1,0 +1,156 @@
+{
+  "code_quality": {
+    "ruff_clean": true,
+    "tests_passed": 0,
+    "coverage_app_py": "83%",
+    "test_wall_s": 46.41,
+    "app_py_lines": 2828
+  },
+  "import": {
+    "import_app_s": 7.092,
+    "runs": 3
+  },
+  "boot_and_page": {
+    "boot_to_http_200_s": 7.897,
+    "runs": 3,
+    "static_gzip_served": false,
+    "html_kb": 352.6,
+    "config_kb": 152.1,
+    "config_ms": 40.5,
+    "own_static_kb": 1187.4,
+    "own_static_kb_over_wire": 305.7
+  },
+  "engine_offline": {
+    "A": {
+      "graph_ms": 15.0,
+      "ui_run_s": 2.06,
+      "pay_hold": [
+        500.0,
+        100.0
+      ]
+    },
+    "B": {
+      "graph_ms": 22.0,
+      "ui_run_s": 2.24,
+      "pay_hold": [
+        8000.0,
+        2000.0
+      ]
+    },
+    "C": {
+      "graph_ms": 24.0,
+      "ui_run_s": 1.91,
+      "pay_hold": [
+        1200.0,
+        0.0
+      ]
+    }
+  },
+  "gemma_live": {
+    "model": "google/gemma-4-26B-A4B-it",
+    "reads": [
+      {
+        "file": "synthetic/set1_handwritten_po_team_lunch.jpg",
+        "expected": 60.0,
+        "read": 60.0,
+        "exact": true,
+        "median_s": 2.073
+      },
+      {
+        "file": "synthetic/set1_restaurant_bill_cafe_lido.jpg",
+        "expected": 66.0,
+        "read": 66.0,
+        "exact": true,
+        "median_s": 2.198
+      },
+      {
+        "file": "synthetic/set2_handwritten_po_office_chairs.jpg",
+        "expected": 720.0,
+        "read": 720.0,
+        "exact": true,
+        "median_s": 2.225
+      },
+      {
+        "file": "synthetic/set2_handwritten_invoice_office_chairs.jpg",
+        "expected": 760.0,
+        "read": 760.0,
+        "exact": true,
+        "median_s": 2.359
+      },
+      {
+        "file": "real/cord_v2_test_001.jpg",
+        "expected": 91000.0,
+        "read": 91000.0,
+        "exact": true,
+        "median_s": 2.042
+      },
+      {
+        "file": "real/cord_v2_test_004.jpg",
+        "expected": 174600.0,
+        "read": 174600.0,
+        "exact": true,
+        "median_s": 3.295
+      }
+    ],
+    "reads_exact": "6/6",
+    "sets": [
+      {
+        "set": "set1",
+        "expected": [
+          60.0,
+          6.0
+        ],
+        "got": [
+          60.0,
+          6.0
+        ],
+        "correct": true,
+        "delivered": 4,
+        "node_s": {
+          "po_parser": 0.768,
+          "vision_agent": 2.017,
+          "invoice_parser": 0.002,
+          "auditor": 0.005,
+          "supervisor": 0.001
+        }
+      },
+      {
+        "set": "set2",
+        "expected": [
+          480.0,
+          280.0
+        ],
+        "got": [
+          480.0,
+          280.0
+        ],
+        "correct": true,
+        "delivered": 4,
+        "node_s": {
+          "po_parser": 0.721,
+          "vision_agent": 2.958,
+          "invoice_parser": 0.0,
+          "auditor": 0.003,
+          "supervisor": 0.0
+        }
+      }
+    ],
+    "scenario_b": {
+      "pay_hold": [
+        8000.0,
+        2000.0
+      ],
+      "delivered": 8,
+      "node_s": {
+        "po_parser": 0.72,
+        "vision_agent": 1.367,
+        "invoice_parser": 0.001,
+        "auditor": 0.003,
+        "supervisor": 0.001
+      }
+    },
+    "chat_median_s": 1.319,
+    "chat_reply_chars": 233,
+    "runs": 3
+  }
+}

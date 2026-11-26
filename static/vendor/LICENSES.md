@@ -2,8 +2,8 @@
 
 | File | Project | Version | License |
 | --- | --- | --- | --- |
-| `three.module.min.js`, `three.core.js` | [three.js](https://github.com/mrdoob/three.js) | 0.187.0 | MIT, Copyright 2010-2026 three.js authors |
-| `gsap/` (ES module files: core, CSSPlugin, ScrollTrigger, Observer) | [GSAP](https://gsap.com) | 3.15.1 | GSAP Standard "no charge" license, https://gsap.com/standard-license |
+| `three.min.js` (the 9 classes the dust intro uses, tree-shaken and minified with esbuild) | [three.js](https://github.com/mrdoob/three.js) | 0.187.0 | MIT, Copyright 2010-2026 three.js authors |
+| `gsap.min.js` (core, CSSPlugin, ScrollTrigger, Observer ES modules, bundled and minified with esbuild) | [GSAP](https://gsap.com) | 3.15.1 | GSAP Standard "no charge" license, https://gsap.com/standard-license |
 
 Motion timings in `../overlord_motion.js` are ported from the motion tokens of
 [Arc](https://github.com/kuratlielia/arc-library) (MIT).

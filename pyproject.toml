@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "zerotouch-ap-auditor"
 version = "1.0.0"
-description = "Project Overlord - zero-touch 3-way AP reconciliation (PO vs Goods Receipt vs Invoice) with LangGraph, Gemini and a Gradio mission-control UI."
+description = "Project Overlord - zero-touch 3-way AP reconciliation (PO vs Goods Receipt vs Invoice) with LangGraph, Gemma 4 and a Gradio workspace."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary - hackathon submission (PS-BA1)" }
-keywords = ["accounts-payable", "audit", "langgraph", "gemini", "gradio", "xai"]
+keywords = ["accounts-payable", "audit", "langgraph", "gemma", "huggingface", "gradio", "xai"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -26,7 +26,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pymupdf>=1.24.0",
     "pillow>=10.0.0",
-    "qrcode>=8.0",
+    "qrcode[pil]>=8.0",
+    "huggingface_hub>=0.30.0",
 ]
 
 [project.optional-dependencies]

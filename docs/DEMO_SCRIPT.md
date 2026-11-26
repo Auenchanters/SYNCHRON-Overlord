@@ -1,6 +1,6 @@
 # Project Overlord (PS-BA1) — 3-Minute Live Pitch Script
 
-Matches `Project_Overlord_Pitch_Prep_and_Script.pdf`. Before going on stage: server live on
+Follows `Project_Overlord_Pitch_Prep_and_Script.pdf` (same folder). Live app: https://auenchanters-overlord-synchron-2026.hf.space. Before going on stage: server live on
 http://localhost:7860, Scenario A selected, Chaos Mode OFF, browser zoom 80–90%.
 
 Open the page a minute early and leave it on the landing page. The first click anywhere dissolves it into dust and opens the workspace;
@@ -14,11 +14,11 @@ make that click as you say "Meet Project Overlord". Use `http://localhost:7860/?
 ### [0:30 – 1:10] Act 2: The 3-Pillar Setup *(gesture across 01 / 02 / 03)*
 > "Overlord brings all three financial pillars side by side:
 > - **01 / Purchase Order**: **PO #8842**, parsed by our **Gyansutr RAG** engine, locking authorized spend at **$500.00** with an explicit **Non-Billable Extras Clause**.
-> - **02 / Goods Receipt**: physical delivery proof inspected by **Gemini 3.5 Flash Vision**.
+> - **02 / Goods Receipt**: physical delivery proof inspected by **Gemma 4 vision** (google/gemma-4-26B-A4B-it).
 > - **03 / Vendor Invoice**: **INV-2024-001**, where the vendor is billing **$600.00**."
 
 ### [1:10 – 1:50] Act 3: The Climax *(click **Execute 3-Way Match**, pause 2s)*
-> "Our **5-node LangGraph** state machine routes from the PO Parser to Gemini Vision, extracts the Invoice line items, runs the 3-Way reconciliation in the Auditor, and passes through our **Supervisor Agent**—which independently verifies `600 - 500 = 100` before routing—so there are zero math hallucinations.
+> "Our **5-node LangGraph** state machine routes from the PO Parser to Gemma 4 vision, extracts the Invoice line items, runs the 3-Way reconciliation in the Auditor, and passes through our **Supervisor Agent**—which independently verifies `600 - 500 = 100` before routing—so there are zero math hallucinations.
 >
 > **$500.00** locks green on the PO, **$600.00** and the unauthorized **Setup Fee** pulse red on the Invoice, and **TOTAL RECOVERED** flashes **$100.00**."
 
@@ -27,11 +27,11 @@ The verdict lands right under the run bar: **Pay $500.00 · Hold $100.00** with 
 
 ### [1:50 – 2:25] Act 4: XAI Chatbot + Vision Bounding Box
 1. Click **Why did you flag this?** in the XAI chatbot.
-2. Switch **Demo Scenario** to **Scenario B: Short-Delivery GPU Fraud ($2,000 Overcharge)** and click **Execute 3-Way Match**.
+2. Switch **Case to check** (run bar) to **Scenario B: Short-Delivery GPU Fraud ($2,000 Overcharge)** and click **Execute 3-Way Match**.
 
 > "Judges don't want black-box AI—they want auditability. I click 'Why did you flag this?' and get a context-grounded explanation citing the exact PO cap and unauthorized fee—while off-topic prompts are blocked by guardrails.
 >
-> Now physical fraud detection. Scenario B: 10 GPUs ordered and billed, only 8 delivered. Look at **02 / Goods Receipt**: Gemini Vision + Pillow draw a red XAI bounding box over the empty bays: **MISSING INVENTORY: 2 OF 10 UNITS**, saving **$2,000** instantly."
+> Now physical fraud detection. Scenario B: 10 GPUs ordered and billed, only 8 delivered. Look at **02 / Goods Receipt**: Gemma 4 vision + Pillow draw a red XAI bounding box over the empty bays: **MISSING INVENTORY: 2 OF 10 UNITS**, saving **$2,000** instantly."
 
 Telemetry: `[SUPERVISOR AGENT] 10000 - 8000 = 2000. Calculations mathematically verified.`
 Flex: switch Audit Mode to **2-Way Match** and re-run — it clears, because a 2-way check never looks at the dock. That is why the third document matters.

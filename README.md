@@ -15,187 +15,253 @@ datasets:
   - naver-clova-ix/cord-v2
 ---
 
-# Project Overlord // The Financial Defense Engine (PS-BA1)
+<div align="center">
 
-**Autonomous Three-Way Invoice, Purchase Order & Goods-Receipt Reconciliation Platform**
+# 🧾 Project Overlord — the three-way invoice check
 
-Project Overlord eliminates Accounts Payable (AP) budget leakage by autonomously cross-referencing **Purchase Orders (PO)**, physical **Goods Receipts (GR)**, and **Vendor Invoices** in real time. Built with **Gyansutr RAG**, a **5-Node LangGraph `StateGraph`**, **Gemma 4 (`google/gemma-4-26B-A4B-it`) on Hugging Face Inference Providers** (Gemini as an optional alternative), **PyMuPDF**, **Pillow**, **QRCode**, and a **Gradio 6 audit workspace styled with the Astryx Neutral design system** (meta/astryx).
+**Pay what was ordered and delivered. Hold the rest.**
+
+[![Track PS-BA1](https://img.shields.io/badge/Track-PS--BA1_·_AP_reconciliation-111111)](#why-this-matters)
+[![Live demo](https://img.shields.io/badge/Live_demo-Hugging_Face_Space-FFD21E?logo=huggingface&logoColor=black)](https://auenchanters-overlord-synchron-2026.hf.space)
+[![Gemma 4](https://img.shields.io/badge/Gemma_4-26B--A4B--it-4285F4)](https://huggingface.co/google/gemma-4-26B-A4B-it)
+[![LangGraph](https://img.shields.io/badge/LangGraph-5_agents-1C3C3C)](https://github.com/langchain-ai/langgraph)
+[![Gradio 6.32](https://img.shields.io/badge/Gradio-6.32-F97316?logo=gradio&logoColor=white)](https://www.gradio.app/)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![tests](https://img.shields.io/badge/tests-6_passing-3FB950)](tests/)
+[![ruff](https://img.shields.io/badge/ruff-clean-3FB950)](pyproject.toml)
+
+Before an invoice is paid, Overlord compares it with the **purchase order** (what was authorized) and the **goods receipt** (what actually arrived). Five LangGraph agents read the three documents, count the delivered units from a photo, and return one verdict: **Pay $X, Hold $Y**, with the disputed lines flagged, a clause-cited dispute email drafted, and an append-only audit record written. Documents can be typed, PDFs, or **phone photos of handwritten notes and restaurant bills**, read by **Gemma 4** through Hugging Face Inference Providers.
+
+> **On the bundled photo samples: Gemma 4 read `6 / 6` document totals exactly (≈2 s each), and every three-way check returned the correct Pay / Hold.** The money math never comes from the model: a Supervisor agent re-derives every figure.
+
+### ▶ [Open the live app](https://auenchanters-overlord-synchron-2026.hf.space)
+
+![Project Overlord: landing page dissolving into the workspace, then a three-way check returning Pay $500 / Hold $100](docs/media/demo.gif)
+
+</div>
 
 ---
 
-## 1. Problem Statement (`PS-BA1`)
+## Table of contents
 
-Enterprises lose millions annually to **"The Fragmented Match"**:
-- AP teams manually reconcile three disconnected records across PDFs, emails, warehouse dock photos, and ERP ledgers.
-- Under Net-30 settlement pressure, human error allows **uncontracted surcharges** (e.g., hidden setup/consulting fees), **inflated unit rates**, and **short-shipped deliveries** (paying for 10 units when only 8 arrived) to pass unchecked.
-- Existing tools operate as black boxes with no line-item visual explainability, no adversarial resilience, and no automated dispute or settlement closure.
-
-**Project Overlord** replaces manual review with a zero-touch, auditable 5-agent reconciliation loop that executes in seconds.
+- [Why this matters](#why-this-matters)
+- [Results](#results)
+- [How it works](#how-it-works)
+- [Screenshots](#screenshots)
+- [Try it in two minutes](#try-it-in-two-minutes)
+- [Quickstart](#quickstart)
+- [Configuration](#configuration)
+- [Testing and benchmarks](#testing-and-benchmarks)
+- [Project structure](#project-structure)
+- [Design decisions](#design-decisions)
+- [Credits and licences](#credits-and-licences)
 
 ---
 
-## 2. System Architecture
+## Why this matters
+
+Accounts-payable teams match three records by hand: the purchase order, the goods receipt from the dock, and the vendor's invoice. Under Net-30 pressure the usual leaks get through:
+
+- **Uncontracted extras**: a "setup fee" or a 10% service charge that was never on the PO.
+- **Short shipments**: 10 GPUs billed, 8 delivered.
+- **Paper that never reaches the system**: a handwritten PO, a till receipt, a receiving note with two boxes crossed out.
+
+A two-way match (PO vs invoice) misses the short shipment by design. Overlord always brings the third document in, reads it with a vision model, and turns the comparison into an action: a dispute email for the held amount, and a UPI payment code for the verified amount only.
+
+## Results
+
+All numbers below were measured on this repository (Windows 11, Python 3.13, Gradio 6.32) with [`bench/benchmark.py`](bench/benchmark.py) and Lighthouse 12. Raw output: [`bench/results.json`](bench/results.json) (after) and [`bench/results_before.json`](bench/results_before.json) (before the optimisation pass).
+
+### 1. Gemma 4 reading accuracy and latency
+
+Model `google/gemma-4-26B-A4B-it` via Hugging Face Inference Providers, median of 3 calls per document.
+
+| Document (in `samples/`) | Kind | Expected total | Gemma 4 read | Latency |
+|---|---|---:|---:|---:|
+| `set1_handwritten_po_team_lunch.jpg` | handwritten PO | 60.00 | **60.00** ✅ | 2.34 s |
+| `set1_restaurant_bill_cafe_lido.jpg` | restaurant bill | 66.00 | **66.00** ✅ | 1.85 s |
+| `set2_handwritten_po_office_chairs.jpg` | handwritten PO | 720.00 | **720.00** ✅ | 2.34 s |
+| `set2_handwritten_invoice_office_chairs.jpg` | handwritten invoice | 760.00 | **760.00** ✅ | 2.22 s |
+| `cord_v2_test_001.jpg` (real, CORD-v2) | till receipt | 91,000 | **91,000** ✅ | 2.10 s |
+| `cord_v2_test_004.jpg` (real, CORD-v2) | till receipt | 174,600 | **174,600** ✅ | 2.27 s |
+
+**End-to-end verdicts** (photo PO + photo bill + photo receiving note → 5-agent graph):
+
+| Case | Vision count | Expected | Got |
+|---|---|---|---|
+| Set 1: team lunch, 10% service charge added | 4 of 4 thalis | Pay $60.00 / Hold $6.00 | **Pay $60.00 / Hold $6.00** ✅ |
+| Set 2: 6 chairs ordered, 4 received, $40 delivery fee | 4 of 6 chairs | Pay $480.00 / Hold $280.00 | **Pay $480.00 / Hold $280.00** ✅ |
+| Scenario B: 10 GPUs billed, dock scan shows 8 | 8 of 10 GPUs | Pay $8,000 / Hold $2,000 | **Pay $8,000 / Hold $2,000** ✅ |
+
+Auditor chat ("Why did you flag this?"): **1.41 s** median reply with Gemma 4. Verified live on the Space as well: the Cafe Lido set returned Pay $60 / Hold $6 in 4.1 s end to end.
+
+### 2. Speed of a check
+
+| | Before | After |
+|---|---:|---:|
+| Audit graph alone, offline engine (Scenario A / B / C) | 15 / 22 / 24 ms | 11 / 21 / 17 ms |
+| Full UI run incl. streamed agent steps, offline (A / B / C) | 2.06 / 2.24 / 1.91 s | **0.86 / 0.95 / 0.82 s** |
+| PO Parser node with Gemma 4 (clause check) | 0.72–0.77 s | **< 0.01 s** (now runs alongside the vision count) |
+| Whole graph with Gemma 4, photo set 1 / set 2 / Scenario B | 2.79 / 3.68 / 2.09 s | **1.90 / 2.21 / 1.08 s** |
+
+### 3. Page load
+
+| | Before | After |
+|---|---:|---:|
+| Page HTML on the wire (`/`) | 352.6 KB (uncompressed) | **28.8 KB** (gzip) |
+| `/config` on the wire | 152.1 KB (uncompressed) | gzip |
+| Our JavaScript, raw / on the wire | 1,187 / 306 KB | **705 / 197 KB** |
+| three.js on `?intro=0` (no landing page) | always downloaded | **not downloaded** |
+| Lighthouse performance, `?intro=0` / landing page | 69 / 69 | **74 / 73** |
+| Largest Contentful Paint, `?intro=0` / landing page | 2.06 / 2.09 s | **1.53 / 1.60 s** |
+| First Contentful Paint, `?intro=0` / landing page | 0.81 / 0.82 s | **0.68 / 0.65 s** |
+| Total transfer, `?intro=0` / landing page | 1,088 / 1,088 KB | **505 / 651 KB** |
+| Lighthouse accessibility | 96–97 | **100** |
+
+Lighthouse 12, desktop preset, one run per page against a local server, old and new builds side by side. Cumulative Layout Shift stays at 0.48 in both: it comes from the fonts Gradio's own frontend injects (Source Sans Pro, IBM Plex Mono) swapping in as the app mounts, which the app cannot switch off. On the live Space the same audit measured LCP 3.4 s and 1,137 KB before this pass.
+
+### 4. Code quality and startup
+
+| | Before | After |
+|---|---:|---:|
+| `ruff check .` | clean | clean |
+| Tests | 6 passing | 6 passing |
+| Line coverage of `app.py` | 83% | 83% |
+| Test suite wall time (with coverage) | 46.4 s | **24.8 s** |
+| `python app.py` → first HTTP 200 (median of 3) | 7.90 s | 7.88 s |
+
+Startup is dominated by importing Gradio (≈4.9 s) and LangGraph (≈1.1 s); the app's own module work is ≈0.8 s. The optional Gemini SDK is now imported only when that backend is used, which takes `google.genai` off the startup path.
+
+### What the optimisation pass changed
+
+| Finding (from the measurements) | Fix |
+|---|---|
+| Gradio's Brotli layer only compresses paths with a file extension, so `/` and `/config` went out raw | `_GzipPages` middleware for extension-less routes (SSE streams are excluded by Starlette) |
+| three.js (814 KB) downloaded and parsed before the landing page could appear, even with `?intro=0` | dynamic `import()` started when the landing page shows; tree-shaken to the 9 classes used (569 KB) |
+| GSAP shipped as 5 unminified ES modules (377 KB) | one esbuild bundle, `gsap.min.js` (113 KB) |
+| The advisory PO clause check (0.7 s with Gemma) sat in front of the vision call | submitted to a thread pool in node 1, collected in node 3 |
+| Agent steps were paced at 150 ms each (≈2 s of every run) | 60 ms: every step is still visible, the verdict lands a second sooner |
+| Figtree requested twice (theme + head), and green status text at 4.37:1 contrast | one font request; status green darkened to 4.99:1 |
+
+## How it works
 
 ```mermaid
 flowchart LR
-    A["START"] --> B["01: PO Parser Node<br/>(PyMuPDF + Gyansutr RAG + Gemini)"]
-    B --> C["02: Vision Agent Node<br/>(PIL Preprocess + Gemini Vision / Chaos Mode)"]
-    C --> D["03: Invoice Parser Node<br/>(Line-Item + 10% Tax Extraction)"]
-    D --> E["04: Auditor Node<br/>(3-Way Match + JSONL Receipt + Dispute Draft)"]
-    E --> F["05: Supervisor Node<br/>(Independent Arithmetic Verification)"]
-    F --> G["END (Audit workspace UI)"]
+    IN["PO · goods receipt · invoice<br/>(text, PDF or photo)"] --> R["Gemma 4 reads photos<br/>into fields (JSON)"]
+    R --> P["1 · PO Parser<br/>regex + clause RAG"]
+    P --> V["2 · Vision Agent<br/>counts delivered units"]
+    P -. "clause check (parallel)" .-> I
+    V --> I["3 · Invoice Parser<br/>line items, tax"]
+    I --> A["4 · Auditor<br/>3-way match, dispute draft,<br/>JSONL ledger"]
+    A --> S["5 · Supervisor<br/>re-derives every figure"]
+    S --> OUT["Pay $X · Hold $Y<br/>dispute email · UPI code"]
 ```
 
-### The 5-Agent LangGraph Swarm (`OVERLORD_GRAPH`)
-1. **`po_parser_node` (Gyansutr Clause RAG + Gemini 3.5 Flash):**
-   - Extracts text from live editor input or uploaded `.pdf`/`.txt` files (`pymupdf`).
-   - Runs section-aware chunking (`clean_text`, `chunk_text`) and 64-dimensional hashed cosine similarity (`_embed_text`, `_cosine_sim`) to retrieve governing clauses (e.g., *Non-Billable Extras Clause*, *Short-Shipment Clause*) and authorized spend caps.
-2. **`vision_agent_node` (Gemini Vision + PIL XAI + Chaos Mode):**
-   - Normalizes uploaded Goods Receipt images via `PIL.Image` (`preprocess_gr_image`).
-   - Calls `gemini-3.5-flash` Vision (with a 4–6s non-blocking timeout and deterministic fallback so live demos never stall).
-   - **Vision XAI Bounding Boxes:** On short-delivery fraud (Scenario B: 8/10 GPUs delivered), `draw_vision_xai_bounding_box()` draws a high-contrast red box (`MISSING INVENTORY: 2 OF 10 UNITS`) directly over the warehouse receipt image.
-   - **Chaos Mode:** When toggled on in the sidebar, injects randomized real-world visual anomalies (`[VISION ALERT] Logo not visible...`) to verify active Short-Payment Hold protection.
-3. **`invoice_parser_node` (Dynamic Line-Item & Tax Parser):**
-   - Extracts invoice IDs (`INV-...`), itemized charges, subtotals, and optional 10% tax calculations (`Apply 10% Tax Node`) from live edited text or uploaded PDFs.
-4. **`auditor_node` (Reconciliation & Dispute Engine):**
-   - Compares every invoice line item against contracted PO items and GR delivered counts (`reconcile_three_way`): the payable amount is the PO authorized amount minus the value of units the Goods Receipt did not verify.
-   - `2-Way Match` skips the GR (so short-shipments pass, which is the point of the comparison); `4-Way Match (Tax Verification)` adds `TAX-DOC-2024-8842` and disputes tax billed on the exempt delivery.
-   - Flags uncontracted fees, rate inflation, and quantity shortages, drafts a legally grounded vendor dispute email, and writes an fsync'd JSONL audit record to `workspace/receipts/overlord_audit.jsonl`.
-5. **`supervisor_node` (Independent Verification Gate):**
-   - Re-derives the variance from the invoice total, payable cap and flagged lines (e.g., `[SUPERVISOR AGENT] 600 - 500 = 100. Calculations mathematically verified. Routing to Dispute.`). If the Auditor's figure disagrees, it overrides it and routes to human review.
+1. **PO Parser** reads the purchase order (typed, PDF via PyMuPDF, or a photo read by Gemma 4), finds the authorized amount and line items, and retrieves the governing clause (e.g. *Non-Billable Extras*, *Short-Shipment*) with section-aware chunking and hashed cosine similarity. An advisory one-line clause check by the model runs in the background.
+2. **Vision Agent** sends the goods-receipt image to Gemma 4 and asks for the delivered count and, if units are missing, a box around them. Missing stock gets a red box drawn on the scan (`MISSING INVENTORY: 2 OF 10 UNITS`). **Chaos Mode** feeds it a tampered result to show that the hold is real logic, not a script.
+3. **Invoice Parser** extracts the invoice number, line items, tax and total.
+4. **Auditor** matches every invoice line against the PO and the delivered count. Payable = authorized amount minus the value of undelivered units; anything above it is held. It drafts a clause-cited dispute email and writes an fsync'd record to `workspace/receipts/overlord_audit.jsonl`.
+5. **Supervisor** recomputes the variance from the raw figures (`600 - 500 = 100. Calculations mathematically verified.`). If the Auditor disagrees, the Supervisor overrides it and routes to human review.
 
----
+`2-Way Match` skips the goods receipt (so the short shipment passes, which is the point of the comparison); `4-Way Match` adds a tax document check. Every model call has a hard time cap; on timeout or without a token the deterministic engine answers and the log says `[FALLBACK]`.
 
-## 3. Complete Feature Breakdown
+## Screenshots
 
-| Feature | Where in UI | What It Does |
-| :--- | :--- | :--- |
-| **Landing page & dust transition** | First screen | A plain landing page; one click (or Enter) dissolves it into wind-blown dust rendered with three.js while the dashboard finishes loading behind it. Add `?intro=0` to the URL to skip it. Honors reduced-motion. |
-| **Light / dark mode** | Header switch, next to Total recovered | Dark is opt-in and remembered per browser (light stays the projector-safe default). The new theme wipes in as a circle from the switch via the View Transitions API; the landing page and dust follow the chosen theme. |
-| **Dashboard motion** | Whole workspace | GSAP timelines, timed with Arc's motion tokens: the run bar shows each agent step as it finishes, the verdict stamp is pressed onto the card when it scrolls into view (ScrollTrigger), the recovered amount counts up, flagged lines and changed totals rise in. Only fires when a value actually changes. Libraries are vendored in `static/vendor/` so it works offline. |
-| **Multi-Scenario Matrix** | Left Sidebar (`Demo Scenario`) | One-click presets: **Scenario A** (`$100` Unauthorized Setup Fee), **Scenario B** (10 GPUs ordered and billed, 8 delivered: `$2,000` short-delivery), and **Scenario C** (`$0.00` Clean 3-Way Match). Each preset loads its own dock-scan Goods Receipt image. |
-| **Audit Modes & Tax Hook** | Left Sidebar (`Audit Mode` / `Apply 10% Tax Node`) | Switch between `3-Way Match`, `2-Way Match`, and `4-Way Match (Tax Verification)` (`TAX-DOC-2024-8842`), plus a live 10% Tax Node checkbox. |
-| **Chaos Mode** | Left Sidebar (`Chaos Mode`) | Injects live adversarial Vision failures (`38.4%` confidence alert) mid-demo to prove the Vision pipeline isn't hardcoded. |
-| **Live PDF / Text Ingestion** | Cols 1 & 3 (`Edit / Upload PDF` tabs) | Upload custom `.pdf` or `.txt` Purchase Orders and Invoices (parsed via `pymupdf`) or edit amounts live and watch XAI diffing recompute. |
-| **3-Column XAI Visual Diffing** | Top Workspace (`01 / PO`, `02 / GR`, `03 / Invoice`) | Highlights authorized PO amounts in green (`.hl-ok`, with a check mark), pulses unauthorized invoice fees/totals in red (`.hl-flag-pulse`), and flashes `TOTAL RECOVERED` in the header. |
-| **Vision XAI Bounding Box** | Col 2 (`02 / GOODS RECEIPT`) | Dynamically draws a red bounding box over empty manifest bays when units are missing (Scenario B). |
-| **Explainable AI Chatbot** | Bottom Left (`Chat with the Auditor`) | Context-injected `gr.Chatbot` powered by Gemini 3.5 Flash with grounded offline fallback, domain guardrails (politely rejects off-topic questions like *"What is the capital of France?"*), and 4 quick-ask buttons: **Why did you flag this?**, **Summarize Invoice**, **Draft Payment Approval**, and **What if the invoice was $450?**. |
-| **Send Dispute Kill Shot** | Bottom Right (`Send Dispute to Vendor`) | Dispatches the dispute email, displays `[SUCCESS] Dispute dispatched to vendor via API. Funds secured.`, logs to JSONL, and pops up an annualized scale ROI toast (`$120,000 saved this year` at 5,000 invoices/month). |
-| **UPI Checkout Gateway** | Bottom Right (`Proceed to Payment`) | Generates a live QR code via `qrcode` for the verified payable amount (`upi://pay?pa=9458175464@yesfam&pn=ProjectOverlord&am=<payable>&cu=INR`, raw URI fallback textbox). Disputed amounts are withheld; a Chaos-Mode Vision hold blocks payment. **Simulate Payment Success** logs `PAID ($<payable>)` to the ledger. |
-| **Compliance Ledger & Export** | Tab 2 (`Compliance Ledger & Export`) | Live table backed by `workspace/receipts/overlord_audit.jsonl`, cumulative leakage KPI, and one-click JSON Audit Certificate export (`workspace/exports/OVL-CERT-*.json`). |
-| **CFO Boardroom** | Tab 3 (`CFO Boardroom`) | Bloomberg-terminal-styled ROI calculator with sliders for **Monthly Invoices Processed**, **Average Invoice Value ($)**, and **Error Rate (%)**. |
-| **Donut Challenge Hooks** | Bottom of `app.py` | Pre-built commented-out LangGraph nodes (`translate_dispute_email()`, `calculate_tax()`) ready for rapid live judging twists. |
+| | |
+|:---:|:---:|
+| ![Verdict for Scenario A](docs/media/verdict-scenario-a.png) **Verdict first.** Pay $500 / Hold $100, the unauthorized setup fee flagged in the invoice. | ![Vision box on the dock scan](docs/media/vision-box-scenario-b.png) **Short shipment.** Gemma 4 counts 8 of 10 GPUs and the missing bays are boxed. |
+| ![Photo PO and restaurant bill](docs/media/photo-bill-verdict.png) **Photos in, verdict out.** A handwritten PO and a Cafe Lido bill read by Gemma 4: the 10% service charge is held. | ![Dark mode](docs/media/dark-mode.png) **Dark mode**, remembered per browser, with a circular View Transitions wipe. |
+| ![Landing page](docs/media/landing.png) **Landing page** that dissolves into three.js dust while the workspace loads. | ![Sample photos panel](docs/media/photo-samples.png) **Sample photos**: handwritten POs, bills and real CORD-v2 receipts, one click each. |
 
----
+<p align="center"><img src="docs/media/mobile.png" width="300" alt="Phone layout in dark mode showing Pay $500 and Hold $100"><br><b>Phone layout</b> (390 px, dark mode)</p>
 
-## 4. Repository Structure
+## Try it in two minutes
 
-```text
-ZeroTouch-AP-Auditor/
-├── app.py                     # Complete application (RAG + 5-node LangGraph + Gradio 6 UI on Astryx Neutral tokens)
-├── requirements.txt           # Runtime Python dependencies
-├── requirements-dev.txt       # Test & lint dependencies (pytest, ruff)
-├── pyproject.toml             # Project metadata, pytest & ruff configuration
-├── .env.example               # Safe template for environment variables
-├── .gitignore                 # Excludes .env, .venv, caches, and generated ledger/export artifacts
-├── run.ps1                    # Windows one-command launcher (.venv, tests, Docker)
-├── run.sh                     # macOS/Linux one-command launcher
-├── Dockerfile                 # Containerized deployment image
-├── .github/workflows/ci.yml   # GitHub Actions CI (ruff lint, offline pytest, Docker smoke test)
-├── tests/
-│   ├── conftest.py            # Forces offline mode and isolates the ledger per test
-│   └── test_overlord.py       # Automated test suite (dynamic parsing, PyMuPDF, XAI bot, Chaos, Mega modules)
-├── workspace/
-│   ├── receipts/              # Immutable fsync'd JSONL audit trail (overlord_audit.jsonl)
-│   └── exports/               # Exported JSON Audit Certificates (OVL-CERT-*.json)
-├── DEMO_SCRIPT.md             # 3-minute live Broadway pitch script
-├── PITCH_DECK.md              # 4-slide Obsidian pitch deck specification & designer notes
-└── SUBMISSION.md              # Hackathon portal submission copy
-```
+Open the [live app](https://auenchanters-overlord-synchron-2026.hf.space) (add `?intro=0` to skip the landing page).
 
----
+1. **Scenario A** is preselected. Press **Execute 3-Way Match** → Pay $500.00 / Hold $100.00 for an unauthorized setup fee.
+2. Pick **Scenario B** in *Case to check* and run → 8 of 10 GPUs delivered, Hold $2,000.00, red box on the dock scan. Switch *Check type* to **2-Way Match** and run again: it passes, because a two-way check never looks at the dock.
+3. Open **Sample photos**, click the team-lunch PO, the Cafe Lido bill and the "all received" note, then run → Pay $60.00 / Hold $6.00.
+4. Ask the auditor **Why did you flag this?**, press **Send Dispute to Vendor**, or **Proceed to Payment** for a UPI code covering the verified amount only.
 
-## 5. Configuration & Environment Variables
+| Sample set | Documents | Expected verdict |
+|---|---|---|
+| `samples/synthetic/set1_*` | handwritten PO (team lunch), Cafe Lido bill, "all received" note | Pay $60.00, hold $6.00 |
+| `samples/synthetic/set2_*` | handwritten PO (6 chairs), handwritten invoice with a delivery fee, note with 2 boxes crossed out | Pay $480.00, hold $280.00 |
+| `samples/real/cord_v2_*` | real restaurant receipts from [CORD-v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2) with ground truth | totals read exactly |
 
-Create `.env` from `.env.example` (`.env` is gitignored so keys are never committed):
+Your own paper works too: photograph a PO or any bill in **Edit / Upload PDF** (file or webcam), or hold a receiving note up to the goods-receipt camera.
 
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `HF_TOKEN` | *(empty)* | Hugging Face token. Turns on **Gemma 4** (`google/gemma-4-26B-A4B-it`) through Hugging Face Inference Providers for the PO clause check, goods-receipt vision count, photo reading and the auditor chat. On a Space, add it under **Settings → Variables and secrets** as a secret. |
-| `GEMMA_MODEL` | `google/gemma-4-26B-A4B-it` | Any chat model served by Inference Providers. |
-| `HF_PROVIDER` | `auto` | Inference provider (`auto` picks the first available). |
-| `GOOGLE_API_KEY` | *(empty)* | Optional Gemini key. Used only when there is no `HF_TOKEN`, or when `OVERLORD_LLM_PROVIDER=gemini`. |
-| `OVERLORD_LIVE_LLM` | `1` | `0` forces the offline deterministic engine (tests and CI use this). |
-| `OVERLORD_VISION_TIMEOUT` / `OVERLORD_TRANSCRIBE_TIMEOUT` | `15` / `30` | Seconds before a vision call gives up and the offline engine answers. |
+## Quickstart
 
-Every model call has a hard time cap; when it times out or no key is set, the deterministic engine answers and the telemetry logs `[FALLBACK]`. The math is never left to the model: the Supervisor re-derives every variance.
-
-**Why no LoRA fine-tune.** The model's job here is reading documents into fields and counting units; the money decisions are deterministic code. Gemma 4 already reads handwriting and till receipts well (see the samples), Inference Providers serve the base model only, and a LoRA on a 26B mixture-of-experts model needs paid GPUs. Prompting plus a strict JSON schema keeps it free.
-| `GRADIO_SERVER_PORT` | `7860` | Web server port. |
-| `GRADIO_ANALYTICS_ENABLED` | `False` | Disables Gradio telemetry in CI/local demos. |
-
----
-
-## 5b. Sample documents for live demos
-
-`samples/` holds phone-photo style documents a judge can try, plus the generator script. In the app, open **Sample photos** under the documents and click one.
-
-| Files | What it shows | Expected verdict |
-| :--- | :--- | :--- |
-| `synthetic/set1_*` | Handwritten PO for a team lunch, a Cafe Lido till bill, a handwritten "all received" note | Pay $60.00, hold $6.00: the 10% service charge is not on the PO |
-| `synthetic/set2_*` | Handwritten PO for 6 office chairs, handwritten invoice with a delivery fee, receiving note with 2 boxes crossed out | Pay $480.00, hold $280.00: 2 chairs missing plus the $40 fee |
-| `real/cord_v2_test_*.jpg` | Real restaurant receipts from the [CORD-v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2) dataset (CC BY 4.0), with their ground-truth JSON | The bill is read line by line; totals match the ground truth |
-
-A judge's own paper works the same way: photograph a handwritten PO or any bill in **Edit / Upload PDF** (file or webcam), or hold a receiving note up to the goods-receipt camera.
-
-## 6. Installation, Running & Testing
-
-### Option A: One-Command Launchers
-- **Windows (PowerShell):**
-  ```powershell
-  .\run.ps1            # Create .venv, install requirements, start UI at http://127.0.0.1:7860
-  .\run.ps1 -Test      # Install dev deps and run pytest
-  .\run.ps1 -Docker    # Build and run Docker container on port 7860
-  ```
-- **macOS / Linux:**
-  ```bash
-  chmod +x run.sh
-  ./run.sh             # Create .venv, install requirements, start UI at http://127.0.0.1:7860
-  ./run.sh --test      # Install dev deps and run pytest
-  ./run.sh --docker    # Build and run Docker container on port 7860
-  ```
-
-### Option B: Manual Python Setup
 ```bash
 pip install -r requirements.txt
-python app.py
+cp .env.example .env        # optional: add HF_TOKEN to turn on Gemma 4
+python app.py               # http://127.0.0.1:7860
 ```
-Open **http://localhost:7860** in your browser.
 
-### Running Tests & Linting
+Without a token the deterministic engine runs every check offline. One-command launchers: `./run.sh` (macOS/Linux) or `.\run.ps1` (Windows), each with `--test` / `-Test` and `--docker` / `-Docker`.
+
+**Docker**
+
 ```bash
-# Run full automated test suite
-python -m pytest -v
-
-# Optional linter (requires ruff from requirements-dev.txt)
-ruff check .
+docker build -t overlord .
+docker run --rm -p 7860:7860 --env-file .env overlord
 ```
 
----
+**Hugging Face Space**: the YAML block at the top of this README is the Space configuration. Add `HF_TOKEN` under *Settings → Variables and secrets*.
 
-## 7. Golden Path Live Demo Script
+## Configuration
 
-1. **Scenario A (`$100` Overcharge):** Leave the default scenario selected (`PO #8842` at `$500.00` vs `INV-2024-001` at `$600.00`) and click **Execute 3-Way Match**. Watch the 5-node telemetry stream (`po_parser` → `vision_agent` → `invoice_parser` → `auditor` → `supervisor`), green/red XAI highlights, and `TOTAL RECOVERED: $100.00`.
-2. **XAI Chatbot:** Click **`Why did you flag this?`** (or type `"What is the invoice about?"`) to demonstrate context-grounded reasoning, then optionally test **`What if the invoice was $450?`** or an off-topic guardrail prompt.
-3. **Send Dispute -> Scale Popup:** Click **Send Dispute to Vendor** to fire the green `[SUCCESS]` API banner and the scale ROI toast (`$120,000 saved this year`).
-4. **Scenario B -> Vision XAI Bounding Box:** Switch **Demo Scenario** to **`Scenario B: Short-Delivery GPU Fraud ($2,000 Overcharge)`** and click **Execute 3-Way Match**. Show the red bounding box drawn directly on `02 / GOODS RECEIPT` and `[VISION XAI] Bounding box drawn over missing inventory.`.
-5. **UPI Checkout:** Click **Proceed to Payment** to display the dynamically generated UPI QR (`9458175464@yesfam`), then click **Simulate Payment Success** to update the Compliance Ledger.
-6. **CFO Boardroom:** Open the **CFO Boardroom** tab and adjust the 3 sliders to project annual enterprise savings.
+| Variable | Default | Description |
+|---|---|---|
+| `HF_TOKEN` | *(empty)* | Turns on Gemma 4 for photo reading, the vision count, the clause check and the auditor chat. |
+| `GEMMA_MODEL` | `google/gemma-4-26B-A4B-it` | Any chat model served by Inference Providers. |
+| `HF_PROVIDER` | `auto` | Inference provider (`auto` picks the first available). |
+| `GOOGLE_API_KEY` | *(empty)* | Optional Gemini backend, used when there is no `HF_TOKEN` or with `OVERLORD_LLM_PROVIDER=gemini`. |
+| `OVERLORD_LIVE_LLM` | `1` | `0` forces the offline engine (tests and CI). |
+| `OVERLORD_VISION_TIMEOUT` / `OVERLORD_TRANSCRIBE_TIMEOUT` | `15` / `30` | Seconds before a vision call gives up and the offline engine answers. |
+| `OVERLORD_WORKSPACE_DIR` | `./workspace` | Where the audit ledger and exported certificates are written. |
+| `GRADIO_SERVER_PORT` / `PORT` | `7860` | Web server port. |
 
----
+## Testing and benchmarks
 
-## 8. Additional Project Assets
-- **3-Minute Live Pitch Script:** [DEMO_SCRIPT.md](DEMO_SCRIPT.md)
-- **4-Slide Pitch Deck Spec:** [PITCH_DECK.md](PITCH_DECK.md)
-- **Hackathon Portal Submission Copy:** [SUBMISSION.md](SUBMISSION.md)
-- **Pitch Prep & Script (PDF):** [Project_Overlord_Pitch_Prep_and_Script.pdf](Project_Overlord_Pitch_Prep_and_Script.pdf)
+```bash
+OVERLORD_LIVE_LLM=0 python -m pytest -q      # 6 tests, offline, ~20 s
+ruff check .
+python bench/benchmark.py                    # code quality, boot, page weight, engine speed
+python bench/benchmark.py --live             # + Gemma 4 accuracy and latency on samples/ (needs a Hugging Face login)
+```
+
+The tests cover live-edited and PDF documents, photo-read documents through the full audit, the grounded chat and its off-topic guardrail, Chaos Mode and certificate export, dispute and payment flows on all three scenarios, and that the motion scripts are served as JavaScript with the page config gzip-compressed. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and pytest on Python 3.10, 3.12 and 3.13 and smoke-tests the Docker image.
+
+## Project structure
+
+```
+app.py                  documents + RAG, 5-node LangGraph, Gemma 4 / Gemini client, Gradio UI (Astryx Neutral tokens)
+static/overlord_motion.js   landing page + three.js dust, GSAP dashboard motion, theme switch
+static/vendor/          gsap.min.js, three.min.js (esbuild bundles) + LICENSES.md
+samples/                photo sets 1-2 (synthetic, make_samples.py) and CORD-v2 receipts with ground truth
+bench/benchmark.py      the measurements in this README -> bench/results.json
+tests/                  offline pytest suite (conftest isolates the ledger per test)
+docs/                   demo script, pitch prep PDF, media/ (README screenshots and GIF)
+workspace/              runtime ledger (receipts/) and exported certificates (exports/)
+Dockerfile · run.sh · run.ps1 · .github/workflows/ci.yml
+```
+
+## Design decisions
+
+- **The model reads; code decides.** Gemma 4 turns photos into JSON fields and counts units. Payable, held and variance amounts are computed by plain Python, and the Supervisor checks them again. A model mistake can at worst misread a field, which shows up in the editor before you run the check.
+- **No LoRA fine-tune.** Gemma 4 already reads handwriting and till receipts exactly on the samples above; Inference Providers serve the base model only; and a LoRA on a 26B mixture-of-experts model needs paid GPUs. A strict JSON prompt keeps it free.
+- **Always a fallback.** Every call has a wall-clock cap, and the offline engine gives the same verdicts on the preset cases, so a demo never stalls on the network.
+- **Verdict first.** The interface follows the Astryx Neutral design system (grayscale, one dark primary action, colour only for status) and shows Pay / Hold right under the run bar, then the evidence.
+- **Motion that conveys state.** The landing page doubles as the loading screen; agent steps, the verdict stamp and the recovered-amount count-up animate only when a value changes, and everything honours reduced motion.
+
+Pitch material: [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) and [docs/Project_Overlord_Pitch_Prep_and_Script.pdf](docs/Project_Overlord_Pitch_Prep_and_Script.pdf).
+
+## Credits and licences
+
+- Hackathon submission for track **PS-BA1** (autonomous three-way invoice, purchase order and goods-receipt reconciliation).
+- [Gemma 4](https://huggingface.co/google/gemma-4-26B-A4B-it) (Google) via [Hugging Face Inference Providers](https://huggingface.co/docs/inference-providers); [LangGraph](https://github.com/langchain-ai/langgraph); [Gradio](https://www.gradio.app/); [PyMuPDF](https://pymupdf.readthedocs.io/).
+- Real receipts from [CORD-v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2) (Park et al., CC BY 4.0). Synthetic samples are made up by `samples/make_samples.py`.
+- Vendored [three.js](https://github.com/mrdoob/three.js) (MIT) and [GSAP](https://gsap.com) (standard no-charge licence); design tokens from [Astryx](https://github.com/meta/astryx) (MIT); motion timings from [Arc](https://github.com/kuratlielia/arc-library) (MIT). Details in [static/vendor/LICENSES.md](static/vendor/LICENSES.md).
