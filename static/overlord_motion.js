@@ -34,9 +34,10 @@ try {
   if (localStorage.getItem(THEME_KEY) === "dark") document.documentElement.dataset.ovTheme = "dark";
 } catch {}
 
+// Astryx Neutral surfaces and text roles, matching the dashboard palette in app.py.
 const PAD = isDark()
-  ? { paper: "#121A16", rule: "#24322A", margin: "#6E3A34", ink: "#E6EDE7", ink2: "#A9B8AE", green: "#5BC995" }
-  : { paper: "#F4F7EF", rule: "#CFDBC6", margin: "#D9A39C", ink: "#1D2721", ink2: "#46554B", green: "#1C6B43" };
+  ? { paper: "#1B1B1B", ink: "#FFFFFF", ink2: "#9E9E9E", accent: "#F1F1F1", onAccent: "#111111" }
+  : { paper: "#F1F1F1", ink: "#111111", ink2: "#474747", accent: "#1B1B1B", onAccent: "#FFFFFF" };
 
 /* ------------------------------------------------------------------ */
 /* Landing page                                                        */
@@ -44,15 +45,14 @@ const PAD = isDark()
 
 const INTRO_CSS = `
 #ov-intro { position: fixed; inset: 0; z-index: 10000; cursor: pointer; color: ${PAD.ink};
-  font-family: 'IBM Plex Sans', system-ui, sans-serif; background-color: ${PAD.paper};
-  background-image: linear-gradient(to right, transparent 0 calc(8vw - 3px), ${PAD.margin} calc(8vw - 3px) calc(8vw - 2px), transparent calc(8vw - 2px) 8vw, ${PAD.margin} 8vw calc(8vw + 1px), transparent calc(8vw + 1px)),
-    repeating-linear-gradient(to bottom, transparent 0 31px, ${PAD.rule} 31px 32px);
+  font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: ${PAD.paper};
   display: grid; align-items: center; }
-#ov-intro .ov-intro-inner { margin-left: calc(8vw + 48px); max-width: min(70ch, 80vw); padding: 48px 0; }
+#ov-intro .ov-intro-inner { margin-left: 8vw; max-width: min(70ch, 84vw); padding: 48px 0; }
 #ov-intro h1 { margin: 0; font-size: clamp(48px, 7vw, 88px); line-height: 1.02; font-weight: 700; letter-spacing: -0.035em; text-wrap: balance; }
 #ov-intro .ov-intro-lede { margin: 20px 0 0; font-size: clamp(18px, 1.6vw, 22px); line-height: 1.5; color: ${PAD.ink2}; max-width: 46ch; text-wrap: pretty; }
 #ov-intro .ov-intro-meta { margin: 14px 0 0; font-size: 16px; color: ${PAD.ink2}; }
-#ov-intro .ov-intro-cta { margin: 40px 0 0; font-size: 18px; font-weight: 600; color: ${PAD.green}; }
+#ov-intro .ov-intro-cta { display: inline-block; line-height: 44px; margin: 40px 0 0; height: 44px; padding: 0 18px; border-radius: 10px;
+  background: ${PAD.accent}; color: ${PAD.onAccent}; font-size: 16px; font-weight: 600; }
 #ov-intro .ov-intro-status { margin: 8px 0 0; min-height: 1.5em; font-size: 16px; color: ${PAD.ink2}; }
 #ov-intro .ov-w { display: inline-block; }
 #ov-intro canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
@@ -124,12 +124,15 @@ function rasterizeIntro(intro, W, H) {
   const ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.fillStyle = PAD.paper;
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = PAD.rule;
-  for (let y = 31; y < H; y += 32) ctx.fillRect(0, y, W, 1);
-  const m = Math.round(W * 0.08);
-  ctx.fillStyle = PAD.margin;
-  ctx.fillRect(m - 3, 0, 1, H);
-  ctx.fillRect(m, 0, 1, H);
+  // The call-to-action is a filled button, so its fill turns to dust with the words.
+  const cta = intro.querySelector(".ov-intro-cta");
+  if (cta) {
+    const r = cta.getBoundingClientRect();
+    ctx.fillStyle = PAD.accent;
+    ctx.beginPath();
+    ctx.roundRect(r.left, r.top, r.width, r.height, 10);
+    ctx.fill();
+  }
   ctx.textBaseline = "alphabetic";
   for (const word of intro.querySelectorAll(".ov-w")) {
     const r = word.getBoundingClientRect();
@@ -304,8 +307,8 @@ function rise(targets, vars = {}) {
   );
 }
 
-/* The one authored moment: the Pay and Hold figures count up, the stamp is pressed onto the card,
-   the card takes the hit, then the reason rises. It plays when the verdict is on screen. */
+/* The one authored moment: the Pay and Hold figures count up, the status badge pops in,
+   then the reason rises. It plays when the verdict is on screen. */
 function playVerdict(verdict) {
   verdictTl?.kill();
   verdictTrigger?.kill();
@@ -322,10 +325,9 @@ function playVerdict(verdict) {
     verdictTl.to(n, { v: target, duration: T.dur.considered * 1.5, ease: T.ease.standard, onUpdate: () => { el.textContent = money(n.v); } }, i * T.stagger.line);
   });
   verdictTl
-    .fromTo(stamp, { autoAlpha: 0, scale: 1.9, rotation: -9 }, { autoAlpha: 1, scale: 1, rotation: -2, duration: 0.3, ease: "power4.in" }, 0.35)
+    .fromTo(stamp, { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 1, scale: 1, duration: 0.32, ease: "back.out(2.2)", clearProps: "transform" }, 0.35)
     .addLabel("impact")
-    .fromTo(verdict, { y: 0 }, { y: 3, duration: 0.06, ease: "power1.out", yoyo: true, repeat: 1, clearProps: "transform" }, "impact")
-    .fromTo(
+        .fromTo(
       lines,
       { autoAlpha: 0, y: "0.3em" },
       { autoAlpha: 1, y: 0, duration: T.dur.considered, stagger: T.stagger.line, clearProps: "opacity,visibility,transform" },

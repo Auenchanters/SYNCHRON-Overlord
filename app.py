@@ -599,11 +599,11 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
     path = os.path.join(tempfile.gettempdir(), f"overlord_gr_dock_scan_{slug}.png")
     expected, delivered = int(sc["gr_expected_qty"]), int(sc["gr_delivered_qty"])
     empty_box: list[int] | None = None
-    img = Image.new("RGB", (680, 400), (251, 252, 248))
+    img = Image.new("RGB", (680, 400), (255, 255, 255))
     draw = ImageDraw.Draw(img)
-    muted, bright = (70, 85, 75), (29, 39, 33)
-    draw.rectangle([(16, 16), (664, 384)], outline=(169, 189, 158), width=2)
-    draw.rectangle([(16, 16), (664, 62)], fill=(233, 239, 226), outline=(169, 189, 158), width=1)
+    muted, bright = (71, 71, 71), (17, 17, 17)
+    draw.rectangle([(16, 16), (664, 384)], outline=(212, 212, 212), width=2)
+    draw.rectangle([(16, 16), (664, 62)], fill=(241, 241, 241), outline=(212, 212, 212), width=1)
     draw.text((34, 30), f"GOODS RECEIPT // DOCK SCAN #GR-{sc['po_id'].split('#')[-1]}", fill=bright, font=_font(18))
     draw.text((34, 78), f"PO REFERENCE : {sc['po_id']}", fill=muted, font=_font(14))
     draw.text((34, 100), f"VENDOR       : {sc['vendor']}", fill=muted, font=_font(14))
@@ -612,7 +612,7 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
     draw.text(
         (34, 144),
         f"DELIVERED    : {delivered} OF {expected} UNITS SIGNED FOR",
-        fill=(28, 107, 67) if ok else (176, 39, 31),
+        fill=(47, 125, 51) if ok else (192, 38, 44),
         font=_font(14),
     )
     if expected > 1:
@@ -625,11 +625,11 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
             box = [bx, by, bx + bay_w, by + bay_h]
             boxes.append(box)
             if n < delivered:
-                draw.rectangle(box, fill=(220, 238, 221), outline=(28, 107, 67), width=2)
-                draw.text((bx + 14, by + 26), f"GPU #{n + 1:02d}", fill=(28, 107, 67), font=_font(16))
+                draw.rectangle(box, fill=(227, 241, 226), outline=(47, 125, 51), width=2)
+                draw.text((bx + 14, by + 26), f"GPU #{n + 1:02d}", fill=(47, 125, 51), font=_font(16))
             else:
-                draw.rectangle(box, outline=(169, 189, 158), width=1)
-                draw.text((bx + 26, by + 28), "EMPTY", fill=(95, 110, 100), font=_font(14))
+                draw.rectangle(box, outline=(212, 212, 212), width=1)
+                draw.text((bx + 26, by + 28), "EMPTY", fill=(106, 106, 106), font=_font(14))
         missing = boxes[delivered:]
         if missing:
             pad = 6
@@ -641,9 +641,9 @@ def _create_gr_image(slug: str, sc: dict[str, Any]) -> tuple[str, list[int] | No
             ]
     else:
         draw.text((34, 176), "DATE / COND  : 2024-11-24 // EXCELLENT", fill=muted, font=_font(14))
-        draw.text((34, 198), "EXTRAS       : NONE LOGGED ON RECEIVING MANIFEST", fill=(176, 39, 31), font=_font(14))
-        draw.rectangle([(34, 266), (380, 340)], outline=(28, 107, 67), width=2)
-        draw.text((54, 292), f"STAMP: {delivered} ITEM DELIVERED", fill=(28, 107, 67), font=_font(18))
+        draw.text((34, 198), "EXTRAS       : NONE LOGGED ON RECEIVING MANIFEST", fill=(192, 38, 44), font=_font(14))
+        draw.rectangle([(34, 266), (380, 340)], outline=(47, 125, 51), width=2)
+        draw.text((54, 292), f"STAMP: {delivered} ITEM DELIVERED", fill=(47, 125, 51), font=_font(18))
     img.save(path, format="PNG")
     return path, empty_box
 
@@ -1516,7 +1516,7 @@ def send_dispute_to_vendor(
 OVERLORD_HEAD = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 """
 
 # Motion layer: landing page + dust transition (three.js) and dashboard motion (GSAP), all vendored in static/.
@@ -1530,27 +1530,43 @@ OVERLORD_HEAD += f'<script type="module" src="{MOTION_SCRIPT_URL}"></script>'
 # Palette variables live in the head, not OVERLORD_CSS: Gradio re-scopes custom CSS under
 # `.dark .gradio-container .contain`, which would re-apply the light palette inside dark mode.
 OVERLORD_HEAD += """<style>
+/* Astryx Neutral theme tokens (meta/astryx, packages/themes/neutral), mapped onto the --pad-* names the CSS uses. */
 :root {
-    --pad-paper: #F4F7EF;
-    --pad-paper-2: #E9EFE2;
-    --pad-sheet: #FBFCF8;
-    --pad-rule: #CFDBC6;
-    --pad-rule-strong: #A9BD9E;
-    --pad-ink: #1D2721;
-    --pad-ink-2: #46554B;
-    --pad-ink-3: #5F6E64;
-    --pad-green: #1C6B43;
-    --pad-green-tint: #DCEEDD;
-    --pad-red: #B0271F;
-    --pad-red-tint: #F8E2DE;
-    --pad-sans: 'IBM Plex Sans', system-ui, sans-serif;
-    --pad-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --pad-paper: #F1F1F1;        /* --color-background-body */
+    --pad-paper-2: #F1F1F1;      /* --color-background-muted */
+    --pad-sheet: #FFFFFF;        /* --color-background-card */
+    --pad-rule: #EBEBEB;         /* --color-border (black 8%) */
+    --pad-rule-strong: #D4D4D4;  /* --color-border-emphasized */
+    --pad-ink: #111111;          /* --color-text-primary */
+    --pad-ink-2: #474747;        /* --color-text-secondary */
+    --pad-ink-3: #6A6A6A;        /* --color-icon-secondary */
+    --pad-accent: #1B1B1B;       /* --color-accent: Neutral's primary buttons are near-black */
+    --pad-on-accent: #FFFFFF;
+    --pad-green: #2F7D33;        /* --color-text-success */
+    --pad-green-fill: #198100;   /* --color-success */
+    --pad-green-tint: #E3F1E2;   /* --color-success-muted, lightened for large surfaces */
+    --pad-red: #C0262C;          /* --color-text-error */
+    --pad-red-fill: #C9303A;     /* --color-error */
+    --pad-red-tint: #FFE7E4;     /* --color-error-muted, lightened for large surfaces */
+    --pad-info: #0074E2;         /* --color-info */
+    --pad-radius-inner: 6px;     /* --radius-inner */
+    --pad-radius: 10px;          /* --radius-element */
+    --pad-radius-lg: 12px;       /* --radius-container */
+    --pad-shadow: 0 2px 4px rgb(0 0 0 / 5%), 0 4px 8px rgb(0 0 0 / 10%);   /* --shadow-low */
+    --pad-shadow-med: 0 2px 4px rgb(0 0 0 / 5%), 0 4px 12px rgb(0 0 0 / 10%);
+    --pad-sans: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --pad-mono: ui-monospace, 'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
 }
 html[data-ov-theme="dark"], html[data-ov-theme="dark"] .dark, html[data-ov-theme="dark"] .gradio-container {
-    --pad-paper: #121A16; --pad-paper-2: #0E1411; --pad-sheet: #18221D;
-    --pad-rule: #26352C; --pad-rule-strong: #3A4E42;
-    --pad-ink: #E6EDE7; --pad-ink-2: #AEBDB3; --pad-ink-3: #8FA096;
-    --pad-green: #5BC995; --pad-green-tint: #173A2A; --pad-red: #F2857A; --pad-red-tint: #3D1E1B;
+    --pad-paper: #1B1B1B; --pad-paper-2: #1B1B1B; --pad-sheet: #262626;
+    --pad-rule: #3A3A3A; --pad-rule-strong: #525252;
+    --pad-ink: #FFFFFF; --pad-ink-2: #9E9E9E; --pad-ink-3: #9E9E9E;
+    --pad-accent: #F1F1F1; --pad-on-accent: #111111;
+    --pad-green: #90CA90; --pad-green-fill: #64AF4C; --pad-green-tint: rgb(144 202 144 / 18%);
+    --pad-red: #FFAEA7; --pad-red-fill: #FF705D; --pad-red-tint: rgb(255 152 144 / 18%);
+    --pad-info: #6D9CFE;
+    --pad-shadow: 0 2px 4px rgb(0 0 0 / 25%), 0 4px 8px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(255 255 255 / 8%);
+    --pad-shadow-med: 0 2px 4px rgb(0 0 0 / 35%), 0 4px 12px rgb(0 0 0 / 50%), inset 0 0 0 1px rgb(255 255 255 / 12%);
     --body-background-fill: var(--pad-paper) !important; --body-text-color: var(--pad-ink) !important;
     --body-text-color-subdued: var(--pad-ink-2) !important;
     --background-fill-primary: var(--pad-sheet) !important; --background-fill-secondary: var(--pad-paper-2) !important;
@@ -1559,35 +1575,36 @@ html[data-ov-theme="dark"], html[data-ov-theme="dark"] .dark, html[data-ov-theme
     --block-title-text-color: var(--pad-ink) !important; --border-color-primary: var(--pad-rule) !important;
     --input-background-fill: var(--pad-sheet) !important; --input-border-color: var(--pad-rule-strong) !important;
     --input-placeholder-color: var(--pad-ink-3) !important;
-    --button-primary-background-fill: var(--pad-green) !important; --button-primary-background-fill-hover: #7AD6AA !important;
-    --button-primary-text-color: #0E1411 !important; --button-primary-border-color: var(--pad-green) !important;
-    --button-secondary-background-fill: var(--pad-sheet) !important; --button-secondary-background-fill-hover: var(--pad-paper-2) !important;
+    --button-primary-background-fill: var(--pad-accent) !important; --button-primary-background-fill-hover: #FFFFFF !important;
+    --button-primary-text-color: var(--pad-on-accent) !important; --button-primary-border-color: var(--pad-accent) !important;
+    --button-secondary-background-fill: var(--pad-sheet) !important; --button-secondary-background-fill-hover: #303030 !important;
     --button-secondary-text-color: var(--pad-ink) !important; --button-secondary-border-color: var(--pad-rule-strong) !important;
     --checkbox-background-color: var(--pad-sheet) !important; --checkbox-border-color: var(--pad-rule-strong) !important;
+    --checkbox-background-color-selected: var(--pad-accent) !important; --checkbox-border-color-selected: var(--pad-accent) !important;
     --checkbox-label-background-fill: var(--pad-sheet) !important; --checkbox-label-text-color: var(--pad-ink) !important;
     --table-even-background-fill: var(--pad-sheet) !important; --table-odd-background-fill: var(--pad-paper) !important;
     --table-border-color: var(--pad-rule) !important; --panel-background-fill: var(--pad-paper-2) !important;
-    --panel-border-color: var(--pad-rule) !important; --color-accent-soft: var(--pad-green-tint) !important;
+    --panel-border-color: var(--pad-rule) !important; --color-accent-soft: #303030 !important;
     color-scheme: dark;
 }
 </style>"""
 
-# Visual world: an accountant's columnar analysis pad. Pale ruled paper, graphite ink,
-# red ink only for exceptions, green ink only for verified figures. Light on purpose:
-# it is read at a desk and on a projector, where dark UIs wash out.
+# Visual system: Astryx Neutral (meta/astryx). Grayscale surfaces, a near-black primary action,
+# and colour reserved for status: green verified, red exception, blue information.
 _PAD = {
-    "paper": "#F4F7EF",
-    "paper_2": "#E9EFE2",
-    "sheet": "#FBFCF8",
-    "rule": "#CFDBC6",
-    "rule_strong": "#A9BD9E",
-    "ink": "#1D2721",
-    "ink_2": "#46554B",
-    "ink_3": "#5F6E64",
-    "green": "#1C6B43",
-    "green_tint": "#DCEEDD",
-    "red": "#B0271F",
-    "red_tint": "#F8E2DE",
+    "paper": "#F1F1F1",
+    "paper_2": "#F1F1F1",
+    "sheet": "#FFFFFF",
+    "rule": "#EBEBEB",
+    "rule_strong": "#D4D4D4",
+    "ink": "#111111",
+    "ink_2": "#474747",
+    "ink_3": "#6A6A6A",
+    "accent": "#1B1B1B",
+    "green": "#2F7D33",
+    "green_tint": "#E3F1E2",
+    "red": "#C0262C",
+    "red_tint": "#FFE7E4",
 }
 
 _THEME_VALUES = dict(
@@ -1602,52 +1619,52 @@ _THEME_VALUES = dict(
     block_label_background_fill=_PAD["sheet"],
     block_label_text_color=_PAD["ink_2"],
     block_title_text_color=_PAD["ink"],
-    block_radius="4px",
+    block_radius="12px",
     block_shadow="none",
     border_color_primary=_PAD["rule"],
-    border_color_accent=_PAD["green"],
-    color_accent=_PAD["green"],
-    color_accent_soft=_PAD["green_tint"],
+    border_color_accent=_PAD["accent"],
+    color_accent=_PAD["accent"],
+    color_accent_soft=_PAD["paper"],
     input_background_fill=_PAD["sheet"],
     input_border_color=_PAD["rule_strong"],
-    input_border_color_focus=_PAD["green"],
-    input_radius="4px",
+    input_border_color_focus="#0074E2",
+    input_radius="10px",
     input_shadow="none",
-    input_shadow_focus=f"0 0 0 3px {_PAD['green_tint']}",
-    button_primary_background_fill=_PAD["green"],
-    button_primary_background_fill_hover="#155535",
+    input_shadow_focus="inset 0 0 0 2px rgb(0 116 226 / 30%)",
+    button_primary_background_fill=_PAD["accent"],
+    button_primary_background_fill_hover="#474747",
     button_primary_text_color="#FFFFFF",
-    button_primary_border_color=_PAD["green"],
+    button_primary_border_color=_PAD["accent"],
     button_secondary_background_fill=_PAD["sheet"],
     button_secondary_background_fill_hover=_PAD["paper_2"],
     button_secondary_text_color=_PAD["ink"],
     button_secondary_border_color=_PAD["rule_strong"],
     checkbox_background_color=_PAD["sheet"],
     checkbox_border_color=_PAD["rule_strong"],
-    checkbox_background_color_selected=_PAD["green"],
-    checkbox_border_color_selected=_PAD["green"],
+    checkbox_background_color_selected=_PAD["accent"],
+    checkbox_border_color_selected=_PAD["accent"],
     checkbox_label_background_fill=_PAD["sheet"],
-    checkbox_label_background_fill_selected=_PAD["green_tint"],
+    checkbox_label_background_fill_selected=_PAD["paper"],
     checkbox_label_text_color=_PAD["ink"],
-    slider_color=_PAD["green"],
+    slider_color=_PAD["accent"],
     table_border_color=_PAD["rule"],
     table_even_background_fill=_PAD["sheet"],
     table_odd_background_fill=_PAD["paper"],
-    table_row_focus=_PAD["green_tint"],
+    table_row_focus=_PAD["paper"],
     panel_background_fill=_PAD["paper_2"],
     panel_border_color=_PAD["rule"],
     shadow_drop="none",
-    shadow_drop_lg="0 6px 20px rgba(29, 39, 33, 0.12)",
+    shadow_drop_lg="0 2px 4px rgb(0 0 0 / 5%), 0 4px 12px rgb(0 0 0 / 10%)",
 )
 
 OVERLORD_THEME = gr.themes.Base(
-    primary_hue="green",
-    neutral_hue="stone",
-    radius_size="sm",
-    font=[gr.themes.GoogleFont("IBM Plex Sans"), "system-ui", "sans-serif"],
-    font_mono=[gr.themes.GoogleFont("IBM Plex Mono"), "ui-monospace", "monospace"],
+    primary_hue="neutral",
+    neutral_hue="neutral",
+    radius_size="lg",
+    font=[gr.themes.GoogleFont("Figtree"), "system-ui", "sans-serif"],
+    font_mono=["ui-monospace", "SF Mono", "Consolas", "monospace"],
 ).set(
-    # Same values in both schemes: the pad is a light world even when the OS is in dark mode.
+    # Same values in both schemes; dark mode is opt-in through html[data-ov-theme=dark] in OVERLORD_HEAD.
     **_THEME_VALUES,
     **{f"{k}_dark": v for k, v in _THEME_VALUES.items() if f"{k}_dark" in inspect.signature(gr.themes.Base.set).parameters},
 )
@@ -1658,15 +1675,15 @@ OVERLORD_CSS = """
 body, .gradio-container { background: var(--pad-paper) !important; color: var(--pad-ink) !important; font-family: var(--pad-sans) !important; }
 .gradio-container { max-width: 1680px !important; margin: 0 auto !important; padding: 0 !important; overflow: visible !important; font-size: 15px; line-height: 1.5; }
 footer { display: none !important; }
-::selection { background: var(--pad-green-tint); color: var(--pad-ink); }
+::selection { background: #B9D7FF; color: #111111; }
 * { scrollbar-color: var(--pad-rule-strong) transparent; scrollbar-width: thin; }
-:focus-visible { outline: 2px solid var(--pad-green) !important; outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--pad-info) !important; outline-offset: 2px; }
 .num, .ov-figure { font-variant-numeric: tabular-nums lining-nums; }
 
 /* Shell: a quieter sidebar layer next to the working sheet */
 .ov-shell { gap: 0 !important; align-items: stretch !important; min-height: 100vh; }
 .ov-sidebar {
-    background: var(--pad-paper-2) !important; border-right: 1px solid var(--pad-rule) !important;
+    background: var(--pad-sheet) !important; border-right: 1px solid var(--pad-rule) !important;
     padding: 24px 20px !important; gap: 14px !important;
     position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto;
 }
@@ -1683,12 +1700,13 @@ footer { display: none !important; }
 
 .ov-status-stack { display: grid; gap: 4px; font-size: 13px; color: var(--pad-ink-2); }
 .ov-status-line { display: flex; align-items: center; gap: 8px; }
-.ov-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pad-green); flex: none; }
+.ov-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pad-green-fill); flex: none; }
 .ov-dot--amber { background: #B7791F; }
 html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 
 .ov-sidebar-footer { font-size: 12.5px; color: var(--pad-ink-3); line-height: 1.6; border-top: 1px solid var(--pad-rule); padding-top: 12px; }
 .ov-chaos-wrap { background: transparent !important; border: none !important; padding: 0 !important; flex: none !important; }
+.ov-sidebar .block { border-radius: var(--pad-radius) !important; }
 .ov-sidebar > * { flex: none !important; }
 
 /* Labels on Gradio controls: sentence case, readable */
@@ -1702,26 +1720,26 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 /* Dropdown list: opaque, above the controls under it */
 .gradio-container .options, .gradio-container ul.options {
     background: var(--pad-sheet) !important; border: 1px solid var(--pad-rule-strong) !important;
-    box-shadow: 0 8px 24px rgba(29, 39, 33, 0.16) !important; z-index: 1000 !important; opacity: 1 !important;
+    box-shadow: var(--pad-shadow-med) !important; border-radius: var(--pad-radius) !important; z-index: 1000 !important; opacity: 1 !important;
 }
 .gradio-container .options .item { color: var(--pad-ink) !important; font-size: 14px !important; }
-.gradio-container .options .item:hover, .gradio-container .options .item.active { background: var(--pad-green-tint) !important; }
+.gradio-container .options .item:hover, .gradio-container .options .item.active { background: var(--pad-paper) !important; }
 
 /* Buttons: one primary action per area, same shape everywhere */
-.gradio-container button { font-family: var(--pad-sans) !important; font-weight: 600 !important; border-radius: 4px !important; transition: background-color 160ms ease-out, border-color 160ms ease-out; }
+.gradio-container button { font-family: var(--pad-sans) !important; font-weight: 600 !important; border-radius: var(--pad-radius) !important; transition: background-color 160ms ease-out, border-color 160ms ease-out; }
 .ov-exec-btn, .ov-exec-btn button { min-height: 46px !important; font-size: 15px !important; }
 .ov-quick-btn, .ov-quick-btn button { font-size: 13.5px !important; font-weight: 500 !important; }
-.ov-send-btn, .ov-send-btn button { background: var(--pad-red) !important; border-color: var(--pad-red) !important; color: #FFFFFF !important; }
-.ov-send-btn:hover, .ov-send-btn button:hover { background: #8E1F18 !important; }
+.ov-send-btn, .ov-send-btn button { background: var(--pad-red-fill) !important; border-color: var(--pad-red-fill) !important; color: #FFFFFF !important; }
+.ov-send-btn:hover, .ov-send-btn button:hover { background: #A8202A !important; }
 .gradio-container button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Tabs */
 .gradio-container button[role="tab"] { font-size: 14px !important; font-weight: 500 !important; color: var(--pad-ink-2) !important; }
-.gradio-container button[role="tab"][aria-selected="true"] { color: var(--pad-ink) !important; font-weight: 600 !important; border-color: var(--pad-green) !important; }
+.gradio-container button[role="tab"][aria-selected="true"] { color: var(--pad-ink) !important; font-weight: 600 !important; border-color: var(--pad-accent) !important; }
 
 /* Header: title on the left, the money figure on the right */
-.ov-topbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 12px; border-bottom: 2px solid var(--pad-ink); }
-.ov-brand-title { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--pad-ink); }
+.ov-topbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 4px; }
+.ov-brand-title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: var(--pad-ink); }
 .ov-brand-sub { margin: 4px 0 0; font-size: 15px; color: var(--pad-ink-2); max-width: 90ch; }
 .ov-impact-box { text-align: right; }
 /* The theme switch sits in the header so it is reachable without scrolling, on desktop and phone. */
@@ -1732,68 +1750,79 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 .ov-impact-box--flash .ov-impact-value { color: var(--pad-red); animation: ov-ink 600ms cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes ov-ink { from { opacity: 0.2; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-/* Reconciliation footing: one ruled ledger row, the way the pad totals a column */
-.ov-footing { width: 100%; border-collapse: collapse; background: var(--pad-sheet); border: 1px solid var(--pad-rule-strong); font-variant-numeric: tabular-nums; }
-.ov-footing th { text-align: left; font-size: 13px; font-weight: 600; color: var(--pad-ink-2); padding: 10px 16px 2px; border-right: 1px solid var(--pad-rule); }
-.ov-footing td { font-size: 22px; font-weight: 600; padding: 0 16px 4px; border-right: 1px solid var(--pad-rule); color: var(--pad-ink); }
-.ov-footing td.sub { font-size: 12.5px; font-weight: 400; color: var(--pad-ink-3); padding-bottom: 10px; }
-.ov-footing th:last-child, .ov-footing td:last-child { border-right: none; border-left: 2px solid var(--pad-ink); }
+/* Summary row: an Astryx table in a card. */
+.ov-footing { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--pad-sheet); border: 1px solid var(--pad-rule); border-radius: var(--pad-radius-lg); box-shadow: var(--pad-shadow); overflow: hidden; font-variant-numeric: tabular-nums; }
+.ov-footing th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--pad-ink-2); padding: 12px 18px 2px; border-right: 1px solid var(--pad-rule); }
+.ov-footing td { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; padding: 0 18px 2px; border-right: 1px solid var(--pad-rule); color: var(--pad-ink); }
+.ov-footing td.sub { font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--pad-ink-3); padding-bottom: 12px; }
+.ov-footing th:last-child, .ov-footing td:last-child { border-right: none; background: var(--pad-paper); }
+/* Gradio's prose styles draw a text-coloured border on every table cell; keep only the hairlines the design uses. */
+.ov-line-table { border: 0 !important; }
+.ov-footing tr, .ov-line-table tr { border: 0 !important; }
+.ov-footing th, .ov-footing td, .ov-line-table th, .ov-line-table td { border-top: 0 !important; border-left: 0 !important; border-color: var(--pad-rule) !important; }
+.ov-footing th, .ov-footing td { border-bottom: 0 !important; }
+.ov-line-table th, .ov-line-table td { border-right: 0 !important; }
 .ov-footing .is-ok { color: var(--pad-green); }
 .ov-footing .is-alert { color: var(--pad-red); }
 
 /* Document sheets */
 .overlord-row { gap: 16px !important; align-items: stretch !important; }
 .overlord-panel-col { gap: 10px !important; min-width: 0 !important; }
-.ov-doc-shell { background: var(--pad-sheet); border: 1px solid var(--pad-rule-strong); border-radius: 4px; }
-.ov-doc-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 16px 10px; border-bottom: 1px solid var(--pad-rule); }
-.ov-doc-title { font-size: 17px; font-weight: 700; color: var(--pad-ink); }
+.ov-doc-shell { background: var(--pad-sheet); border: 1px solid var(--pad-rule); border-radius: var(--pad-radius-lg); box-shadow: var(--pad-shadow); overflow: hidden; }
+.ov-doc-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; padding: 16px 16px 12px; border-bottom: 1px solid var(--pad-rule); }
+.ov-doc-title { font-size: 16px; font-weight: 700; color: var(--pad-ink); }
+/* Cards sit flush with their tab row, like Astryx tab panels. */
+.ov-docs-row .html-container { padding: 0 !important; }
 .ov-doc-purpose { display: block; font-size: 13px; font-weight: 400; color: var(--pad-ink-2); margin-top: 1px; }
 .ov-doc-body { padding: 0 0 12px; }
-.ov-pill { font-size: 12.5px; font-weight: 600; color: var(--pad-ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ov-pill--ok { color: var(--pad-green); }
-.ov-pill--alert { color: var(--pad-red); }
+.ov-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 9999px; background: var(--pad-paper); font-size: 12px; font-weight: 500; color: var(--pad-ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ov-pill--ok { background: var(--pad-green-tint); color: var(--pad-green); }
+.ov-pill--alert { background: var(--pad-red-tint); color: var(--pad-red); }
 
 .ov-line-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.ov-line-table th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--pad-ink-2); padding: 8px 16px; border-bottom: 1px solid var(--pad-rule-strong); }
+.ov-line-table th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--pad-ink-2); padding: 8px 16px; background: var(--pad-paper); border-bottom: 1px solid var(--pad-rule); }
 .ov-line-table td { padding: 9px 16px; border-bottom: 1px solid var(--pad-rule); color: var(--pad-ink); vertical-align: top; }
-.ov-line-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; border-left: 1px solid var(--pad-rule); }
+.ov-line-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ov-line-row--flagged td { background: var(--pad-red-tint); color: var(--pad-red); }
-.ov-doc-total { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 16px; border-bottom: 3px double var(--pad-ink); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.ov-doc-total { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--pad-rule); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
 .hl-ok { color: var(--pad-green); }
 .hl-ok::after { content: " \\2713"; }
 .hl-flag-pulse { color: var(--pad-red); font-weight: 700; }
 .ov-legal-extract {
     margin: 12px 16px 0; padding: 10px 12px; max-height: 180px; overflow: auto; white-space: pre-wrap;
     font-family: var(--pad-mono); font-size: 12px; line-height: 1.6; color: var(--pad-ink-2);
-    background: repeating-linear-gradient(to bottom, var(--pad-paper) 0 18.2px, var(--pad-rule) 18.2px 19.2px);
-    border: 1px solid var(--pad-rule);
+    background: var(--pad-paper);
+    border: 1px solid var(--pad-rule); border-radius: var(--pad-radius-inner);
 }
 .ov-source { margin: 10px 16px 0; font-size: 13px; color: var(--pad-ink-2); }
 .ov-source summary { cursor: pointer; font-weight: 600; }
 .ov-source .ov-legal-extract { margin: 8px 0 0; }
 .ov-doc-editor textarea { font-family: var(--pad-mono) !important; font-size: 12.5px !important; line-height: 1.6 !important; }
-.ov-gr-image { border: 1px solid var(--pad-rule-strong) !important; background: var(--pad-sheet) !important; }
+.ov-gr-image { border: 1px solid var(--pad-rule) !important; background: var(--pad-sheet) !important; }
 
-.ov-vision-badge { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border: 1px solid var(--pad-rule-strong); background: var(--pad-sheet); font-size: 14px; font-weight: 600; color: var(--pad-green); }
+.ov-vision-badge { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border: 1px solid var(--pad-rule); background: var(--pad-sheet); font-size: 14px; font-weight: 600; color: var(--pad-green); }
 .ov-vision-badge .sub { font-weight: 400; color: var(--pad-ink-2); font-size: 13.5px; }
-.ov-vision-badge--alert { border-color: var(--pad-red); background: var(--pad-red-tint); color: var(--pad-red); }
+.ov-vision-badge--alert { background: var(--pad-red-tint); color: var(--pad-red); }
 
-/* Verdict: the stamp is the state */
-.ov-verdict { border: 1px solid var(--pad-rule-strong); background: var(--pad-sheet); padding: 16px 18px; }
-.ov-verdict--alert { border: 2px solid var(--pad-red); background: var(--pad-red-tint); }
-.ov-verdict--ok { border: 2px solid var(--pad-green); background: var(--pad-green-tint); }
-.ov-stamp { transform: rotate(-2deg); display: inline-block; border: 2px solid currentColor; padding: 2px 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-.ov-verdict--alert .ov-stamp, .ov-verdict--alert .alert-title { color: var(--pad-red); }
-.ov-verdict--ok .ov-stamp, .ov-verdict--ok .alert-title { color: var(--pad-green); }
-.alert-title { margin-top: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--pad-ink); font-variant-numeric: tabular-nums; }
+/* Verdict: an Astryx card. A filled status badge and the two figures carry the state. */
+.ov-verdict { border: 1px solid var(--pad-rule); background: var(--pad-sheet); border-radius: var(--pad-radius-lg); box-shadow: var(--pad-shadow); padding: 16px 20px; }
+.ov-verdict--alert { box-shadow: var(--pad-shadow), inset 4px 0 0 var(--pad-red-fill); }
+.ov-verdict--ok { box-shadow: var(--pad-shadow), inset 4px 0 0 var(--pad-green-fill); }
+.ov-stamp { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 9999px; font-size: 12.5px; font-weight: 600; color: #FFFFFF; }
+.ov-verdict--alert .ov-stamp { background: var(--pad-red-fill); }
+.ov-verdict--ok .ov-stamp { background: var(--pad-green-fill); }
+html[data-ov-theme="dark"] .ov-stamp { color: #111111; }
+.ov-verdict--alert .alert-title { color: var(--pad-red); }
+.ov-verdict--ok .alert-title { color: var(--pad-green); }
+.alert-title { margin-top: 10px; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; color: var(--pad-ink); font-variant-numeric: tabular-nums; }
 .alert-body { margin-top: 4px; font-size: 15px; color: var(--pad-ink); max-width: 70ch; }
 .findings-idle { color: var(--pad-ink-2); font-size: 15px; }
 /* Verdict at the top: two poster-size figures, then the stamp and the reason beside them. */
 .ov-verdict--alert, .ov-verdict--ok { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 12px 40px; align-items: center; padding: 18px 22px; }
 .ov-verdict-figures { display: flex; gap: 36px; }
 .ov-fig { display: flex; flex-direction: column; }
-.ov-fig-label { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pad-ink-2); }
-.ov-fig-value { font-size: clamp(34px, 3.4vw, 52px); font-weight: 700; line-height: 1.05; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.ov-fig-label { font-size: 13px; font-weight: 600; color: var(--pad-ink-2); }
+.ov-fig-value { font-size: clamp(32px, 3.2vw, 48px); font-weight: 700; line-height: 1.1; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
 .ov-fig-sub { font-size: 13px; color: var(--pad-ink-2); }
 .ov-fig--pay .ov-fig-value { color: var(--pad-green); }
 .ov-fig--hold .ov-fig-value { color: var(--pad-red); }
@@ -1810,27 +1839,27 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 
 .ov-telemetry-box textarea { font-family: var(--pad-mono) !important; font-size: 12.5px !important; line-height: 1.6 !important; color: var(--pad-ink-2) !important; background: var(--pad-paper) !important; }
 .ov-dispute-box textarea { font-family: var(--pad-sans) !important; font-size: 14px !important; line-height: 1.6 !important; }
-.ov-chatbot { border: 1px solid var(--pad-rule-strong) !important; background: var(--pad-sheet) !important; }
+.ov-chatbot { border: 1px solid var(--pad-rule) !important; background: var(--pad-sheet) !important; border-radius: var(--pad-radius-lg) !important; }
 .ov-chatbot .message, .ov-chatbot [data-testid="bot"], .ov-chatbot [data-testid="user"] { font-size: 14px !important; line-height: 1.55 !important; }
-.ov-chatbot [data-testid="user"] { background: var(--pad-green-tint) !important; border-color: var(--pad-rule) !important; }
+.ov-chatbot [data-testid="user"] { background: var(--pad-accent) !important; border-color: var(--pad-accent) !important; color: var(--pad-on-accent) !important; }
 .ov-chatbot [data-testid="bot"] { background: var(--pad-paper) !important; border-color: var(--pad-rule) !important; color: var(--pad-ink) !important; }
 
 .ov-dispatch-idle { font-size: 13.5px; color: var(--pad-ink-2); padding: 8px 0; }
-.ov-dispatch-success { border: 2px solid var(--pad-green); background: var(--pad-green-tint); padding: 12px 14px; }
+.ov-dispatch-success { background: var(--pad-green-tint); padding: 12px 16px; border-radius: var(--pad-radius-lg); }
 .ov-dispatch-title { font-size: 15px; font-weight: 700; color: var(--pad-green); }
 .ov-dispatch-sub { font-size: 13px; color: var(--pad-ink-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .ov-ledger-kpi { display: flex; gap: 32px; padding: 12px 0; font-size: 15px; color: var(--pad-ink-2); }
 .ov-ledger-kpi strong { color: var(--pad-ink); font-size: 20px; font-variant-numeric: tabular-nums; display: block; }
 
-.ov-cfo-roi-card { border: 1px solid var(--pad-rule-strong); background: var(--pad-sheet); padding: 18px 20px !important; }
+.ov-cfo-roi-card { border: 1px solid var(--pad-rule); background: var(--pad-sheet); border-radius: var(--pad-radius-lg); box-shadow: var(--pad-shadow); padding: 18px 20px !important; }
 .ov-cfo-roi-card h2 { font-size: 24px !important; letter-spacing: -0.01em; }
 .ov-cfo-roi-card code { font-family: var(--pad-sans) !important; background: transparent !important; color: var(--pad-ink) !important; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 
 /* Run bar: the primary action, full width under the header */
 .ov-runbar {
-    background: var(--pad-sheet) !important; border: 2px solid var(--pad-ink) !important; border-radius: 4px !important;
-    padding: 10px 14px !important; gap: 16px !important; align-items: flex-end !important;
+    background: var(--pad-sheet) !important; border: 1px solid var(--pad-rule) !important; border-radius: var(--pad-radius-lg) !important;
+    box-shadow: var(--pad-shadow-med); padding: 12px 16px !important; gap: 16px !important; align-items: flex-end !important;
 }
 .ov-runbar > .ov-run-col { background: transparent !important; border: none !important; }
 .ov-run-col { gap: 6px !important; justify-content: flex-end !important; }
@@ -1838,11 +1867,11 @@ html[data-ov-theme="dark"] .ov-dot--amber { background: #E0A84A; }
 .ov-run-help { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--pad-ink); }
 .ov-run-help span { font-weight: 400; color: var(--pad-ink-2); }
 /* Progress under the caption while a check runs; space is always reserved so nothing shifts. */
-.ov-run-progress { height: 3px; margin-top: 6px; background: var(--pad-rule); visibility: hidden; }
-.ov-run-progress i { display: block; height: 100%; background: var(--pad-green); transform: scaleX(0); transform-origin: left; will-change: transform; }
+.ov-run-progress { height: 4px; margin-top: 6px; background: var(--pad-rule); border-radius: 9999px; overflow: hidden; visibility: hidden; }
+.ov-run-progress i { display: block; height: 100%; background: var(--pad-accent); transform: scaleX(0); transform-origin: left; will-change: transform; }
 /* Until the first run, a slow ring marks the button as the place to start. */
 @keyframes ov-ring {
-    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pad-green) 45%, transparent); }
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pad-info) 45%, transparent); }
     70%, 100% { box-shadow: 0 0 0 12px transparent; }
 }
 html:not(.ov-has-run) .ov-run-hint:not(:disabled) { animation: ov-ring 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
@@ -1850,8 +1879,8 @@ html:not(.ov-has-run) .ov-run-hint:not(:disabled) { animation: ov-ring 2.4s cubi
 /* Document row: three columns with the same tab row, top line and minimum height */
 .ov-docs-row .ov-doc-shell, .ov-gr-card { min-height: 380px; }
 .ov-gr-card {
-    gap: 0 !important; background: var(--pad-sheet) !important; border: 1px solid var(--pad-rule-strong) !important;
-    border-radius: 4px !important; overflow: hidden; padding: 0 !important;
+    gap: 0 !important; background: var(--pad-sheet) !important; border: 1px solid var(--pad-rule) !important;
+    border-radius: var(--pad-radius-lg) !important; box-shadow: var(--pad-shadow); overflow: hidden; padding: 0 !important;
 }
 .ov-gr-card > * { border-radius: 0 !important; }
 .ov-gr-card .ov-gr-image { border: none !important; border-top: 1px solid var(--pad-rule) !important; border-bottom: 1px solid var(--pad-rule) !important; }
@@ -1872,24 +1901,24 @@ html:not(.ov-has-run) .ov-run-hint:not(:disabled) { animation: ov-ring 2.4s cubi
     .ov-footing th { padding: 8px 8px 2px; }
     .ov-footing td { font-size: 16px; padding: 0 8px 10px; }
 }
-/* Dark mode: the same ledger at night. Opt-in via the header switch (html[data-ov-theme="dark"]). */
-html[data-ov-theme="dark"] .ov-send-btn, html[data-ov-theme="dark"] .ov-send-btn button { color: #1A0E0C !important; }
-html[data-ov-theme="dark"] .ov-send-btn:hover, html[data-ov-theme="dark"] .ov-send-btn button:hover { background: #F6A49B !important; }
+/* Dark mode: Astryx Neutral dark. Opt-in via the header switch (html[data-ov-theme="dark"]). */
+html[data-ov-theme="dark"] .ov-send-btn, html[data-ov-theme="dark"] .ov-send-btn button { color: #111111 !important; }
+html[data-ov-theme="dark"] .ov-send-btn:hover, html[data-ov-theme="dark"] .ov-send-btn button:hover { background: #FF9890 !important; }
 html[data-ov-theme="dark"] .ov-gr-image img { filter: brightness(0.9); }
 
 /* Theme switch */
 .ov-theme-toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 8px 10px;
-    background: var(--pad-sheet); border: 1px solid var(--pad-rule-strong); border-radius: 4px;
+    background: var(--pad-sheet); border: 1px solid var(--pad-rule); border-radius: var(--pad-radius);
     color: var(--pad-ink); font: 600 13.5px var(--pad-sans); cursor: pointer;
 }
-.ov-theme-toggle:hover { border-color: var(--pad-green); }
+.ov-theme-toggle:hover { border-color: var(--pad-rule-strong); }
 .ov-theme-track { position: relative; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--pad-rule-strong); transition: background-color 200ms ease-out; }
 .ov-theme-track::after {
     content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
     background: var(--pad-sheet); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.ov-theme-toggle[aria-checked="true"] .ov-theme-track { background: var(--pad-green); }
+.ov-theme-toggle[aria-checked="true"] .ov-theme-track { background: var(--pad-accent); }
 .ov-theme-toggle[aria-checked="true"] .ov-theme-track::after { transform: translateX(14px); }
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 

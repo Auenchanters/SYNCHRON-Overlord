@@ -2,7 +2,7 @@
 
 **Autonomous Three-Way Invoice, Purchase Order & Goods-Receipt Reconciliation Platform**
 
-Project Overlord eliminates Accounts Payable (AP) budget leakage by autonomously cross-referencing **Purchase Orders (PO)**, physical **Goods Receipts (GR)**, and **Vendor Invoices** in real time. Built with **Gyansutr RAG**, a **5-Node LangGraph `StateGraph`**, **Google Gemini (`gemini-3.5-flash`)**, **PyMuPDF**, **Pillow**, **QRCode**, and a **ledger-style Gradio 6 audit workspace**.
+Project Overlord eliminates Accounts Payable (AP) budget leakage by autonomously cross-referencing **Purchase Orders (PO)**, physical **Goods Receipts (GR)**, and **Vendor Invoices** in real time. Built with **Gyansutr RAG**, a **5-Node LangGraph `StateGraph`**, **Google Gemini (`gemini-3.5-flash`)**, **PyMuPDF**, **Pillow**, **QRCode**, and a **Gradio 6 audit workspace styled with the Astryx Neutral design system** (meta/astryx).
 
 ---
 
@@ -75,7 +75,7 @@ flowchart LR
 
 ```text
 ZeroTouch-AP-Auditor/
-├── app.py                     # Complete application (RAG + 5-node LangGraph + Gradio 6 ledger-style UI)
+├── app.py                     # Complete application (RAG + 5-node LangGraph + Gradio 6 UI on Astryx Neutral tokens)
 ├── requirements.txt           # Runtime Python dependencies
 ├── requirements-dev.txt       # Test & lint dependencies (pytest, ruff)
 ├── pyproject.toml             # Project metadata, pytest & ruff configuration
